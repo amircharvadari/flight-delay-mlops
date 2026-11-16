@@ -1,0 +1,19 @@
+# Data: raw BTS files are public and large; processed files are rebuilt by the pipeline
+data/*
+!data/.gitkeep
+
+# Experiment tracking and model artifacts (local)
+mlruns/
+mlartifacts/
+mlflow.db
+artifacts/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# OS
+.DS_Store

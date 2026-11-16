@@ -1,0 +1,42 @@
+[project]
+name = "flightdelay"
+version = "0.1.0"
+description = "MLOps pipeline for flight arrival-delay prediction using BTS On-Time Performance data"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "pandas>=2.2",
+    "pyarrow>=17",
+    "numpy>=1.26",
+    "pandera>=0.20",
+    "scikit-learn>=1.5",
+    "lightgbm>=4.5",
+    "xgboost>=2.1",
+    "mlflow>=3.0",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "pyyaml>=6.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+    "httpx>=0.27",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/flightdelay"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+# Benchmark scripts in report/evidence are kept unchanged as historical evidence.
+extend-exclude = ["report"]

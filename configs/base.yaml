@@ -1,0 +1,35 @@
+# Base configuration. Every run records the config it used (D-009, D-019).
+project:
+  name: flightdelay
+  seed: 42
+
+paths:
+  raw_dir: data/raw/bts
+  processed_dir: data/processed
+  manifest: data/manifest.csv
+
+data:
+  first_month: "2019-01"
+  last_month: "2025-12"
+  raw_file_pattern: "On_Time_Reporting_Carrier_On_Time_Performance_1987_present_{year}_{month}.zip"
+
+# Roles of the periods (D-011). 2025 is the isolated final holdout (D-020).
+periods:
+  initial_training: ["2019-01", "2019-12"]
+  replay: ["2020-01", "2024-12"]
+  development_selection: ["2022-01", "2024-12"]
+  final_holdout: ["2025-01", "2025-12"]
+
+target: ArrDel15
+
+# Candidate pre-departure features (D-003). Final list is P-005.
+allowed_feature_columns:
+  - FlightDate
+  - Reporting_Airline
+  - Flight_Number_Reporting_Airline
+  - Origin
+  - Dest
+  - CRSDepTime
+  - CRSArrTime
+  - CRSElapsedTime
+  - Distance
