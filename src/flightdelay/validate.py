@@ -18,10 +18,14 @@ Two layers with separate responsibilities (D-024):
    - quarantined share not above QUARANTINE_FAIL_PCT
 
 2. Row level (never fails the batch on its own):
-   - QUARANTINE (D-023): a row with a missing required feature value or an
-     out-of-range feature value. Implemented in row_quarantine_mask().
+   - QUARANTINE (D-023): a row with a missing or out-of-range value in a
+     REQUIRED feature (date, airline, flight number, airports, scheduled
+     times, distance). Implemented in row_quarantine_mask().
    - LABEL EXCLUSION (D-013): a row whose ArrDel15 is missing or not in {0, 1}.
-   Both kinds of row are counted and reported here.
+   - IMPLAUSIBLE DURATION (D-028, D-030): CRSElapsedTime is not a required
+     feature. An impossible or implausible value never quarantines the row;
+     only the duration feature is set to missing (implausible_duration_mask()).
+   All three are counted and reported here.
 
 Important: this module does NOT remove rows from the Parquet files. The
 processed Parquet layer keeps every source row, so the data stays traceable to
@@ -45,6 +49,7 @@ from __future__ import annotations
 import calendar
 from dataclasses import dataclass, field
 
+import numpy as np
 import pandas as pd
 import pandera.pandas as pa
 
@@ -65,12 +70,43 @@ REQUIRED_NOT_NULL = ["FlightDate", "Reporting_Airline", "Flight_Number_Reporting
                      "Origin", "Dest", "CRSDepTime", "CRSArrTime", "Distance"]
 
 
+# D-028 / D-030: plausibility of the scheduled duration, judged against distance.
+# Implausible values make only the duration feature missing; the row is kept.
+MIN_DURATION_MIN = 1.0           # below: impossible (zero or negative duration)
+MAX_DURATION_MIN = 1600.0        # above: impossible for a U.S. domestic schedule
+MAX_BLOCK_SPEED_MPH = 650.0      # implied block speed above this: too short
+LONG_OVERHEAD_MIN = 180.0        # too long: more than this overhead ...
+MIN_BLOCK_SPEED_MPH = 150.0      # ... plus the distance flown at this block speed
+
+
+def implausible_duration_mask(df: pd.DataFrame) -> pd.Series:
+    """True where CRSElapsedTime is impossible or implausible (D-028, D-030).
+
+    Impossible: below MIN_DURATION_MIN or above MAX_DURATION_MIN minutes.
+    Implausible for the route distance: implied block speed above
+    MAX_BLOCK_SPEED_MPH, or longer than LONG_OVERHEAD_MIN plus the distance at
+    MIN_BLOCK_SPEED_MPH. A missing duration is not flagged. Uses only scheduled,
+    pre-departure fields (CRSElapsedTime, Distance).
+    """
+    elapsed = df["CRSElapsedTime"].astype("float64")
+    distance = df["Distance"].astype("float64")
+    impossible = (elapsed < MIN_DURATION_MIN) | (elapsed > MAX_DURATION_MIN)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        speed_mph = distance / (elapsed / 60.0)
+    too_short = (elapsed > 0) & (speed_mph > MAX_BLOCK_SPEED_MPH)
+    too_long = elapsed > LONG_OVERHEAD_MIN + distance / MIN_BLOCK_SPEED_MPH * 60.0
+    return (impossible | too_short | too_long).fillna(False).astype(bool)
+
+
 def row_quarantine_mask(df: pd.DataFrame) -> pd.Series:
-    """True for rows that are unusable: missing or out-of-range feature values."""
+    """True for unusable rows: a REQUIRED feature is missing or out of range.
+
+    CRSElapsedTime is deliberately not checked here (D-030): a bad duration is
+    handled by implausible_duration_mask() without removing the row.
+    """
     ok = (
         df["CRSDepTime"].between(0, 2400)
         & df["CRSArrTime"].between(0, 2400)
-        & (df["CRSElapsedTime"].between(1, 1600) | df["CRSElapsedTime"].isna())
         & df["Distance"].between(1, 6000)
     )
     for col in REQUIRED_NOT_NULL:
@@ -137,8 +173,9 @@ class ValidationResult:
     excluded_rows: int               # missing OR invalid label (D-013)
     excluded_pct: float
     invalid_label_rows: int          # subset of excluded_rows: non-null but not 0/1
-    quarantined_rows: int            # missing or out-of-range feature values (D-023)
+    quarantined_rows: int            # missing or out-of-range REQUIRED feature values (D-023)
     quarantined_pct: float
+    duration_set_nan_rows: int       # usable rows whose duration feature becomes missing (D-030)
     usable_feature_rows: int         # rows passing usable_features_mask() (scoring, drift)
     training_rows: int               # rows passing training_row_mask() (needs a label)
     delay_rate_pct: float            # among rows with a valid label
@@ -189,6 +226,7 @@ def validate_month(
     quarantined = 0
     usable_feat = 0
     training = 0
+    duration_nan = 0
     if not missing_cols:
         qmask = row_quarantine_mask(df)
         quarantined = int(qmask.sum())
@@ -196,8 +234,11 @@ def validate_month(
         if q_pct > QUARANTINE_FAIL_PCT:
             errors.append(f"{quarantined} rows ({q_pct:.2f}%) quarantined, above {QUARANTINE_FAIL_PCT}%")
         elif quarantined:
-            warnings.append(f"{quarantined} rows quarantined (missing or out-of-range feature values)")
+            warnings.append(f"{quarantined} rows quarantined (missing or out-of-range required feature values)")
         usable_feat = int(usable_features_mask(df).sum())
+        # Informational count, not a warning: a few implausible durations per
+        # month are routine and do not affect the usability of the batch.
+        duration_nan = int((implausible_duration_mask(df) & ~qmask).sum())
         training = int(training_row_mask(df).sum())
 
     # --- Row level: label exclusion (D-013) --------------------------------
@@ -241,6 +282,7 @@ def validate_month(
         invalid_label_rows=invalid_nonnull,
         quarantined_rows=quarantined,
         quarantined_pct=round(quarantined / len(df) * 100, 4) if len(df) else 0.0,
+        duration_set_nan_rows=duration_nan,
         usable_feature_rows=usable_feat,
         training_rows=training,
         delay_rate_pct=round(float(label[valid_label].mean()) * 100, 2) if labeled else 0.0,

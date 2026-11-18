@@ -100,12 +100,45 @@ def test_validate_excludes_invalid_labels_and_warns_on_new_airline():
     assert v.status == "warn"
 
 
-def test_single_out_of_range_row_is_quarantined_not_fatal():
+def test_impossible_duration_does_not_quarantine_the_row():
+    """D-030 (revises D-023): -77 min was observed in the real 2020-01 file.
+    Only the duration feature becomes missing; the row stays usable."""
     df = make_month_df()
-    df.loc[0, "CRSElapsedTime"] = -77.0  # observed in the real 2020-01 file
+    df.loc[0, "CRSElapsedTime"] = -77.0
     v = validate_month(df, "2019-01")
-    assert v.status == "warn"
-    assert v.quarantined_rows == 1
+    assert v.status == "pass", (v.errors, v.warnings)
+    assert v.quarantined_rows == 0
+    assert v.duration_set_nan_rows == 1
+    assert v.usable_feature_rows == 200 and v.training_rows == 200
+
+
+@pytest.mark.parametrize("bad", [-77.0, 0.0, 0.5, 1601.0, 5000.0])
+def test_out_of_range_duration_is_counted_not_quarantined(bad):
+    df = make_month_df()
+    df.loc[0, "CRSElapsedTime"] = bad
+    v = validate_month(df, "2019-01")
+    assert v.quarantined_rows == 0 and v.duration_set_nan_rows == 1
+    assert bool(usable_features_mask(df).iloc[0])
+
+
+@pytest.mark.parametrize("col,bad", [
+    ("Distance", -1.0), ("Distance", 0.0), ("Distance", 7000.0),
+    ("CRSDepTime", 2401), ("CRSArrTime", 2500),
+])
+def test_out_of_range_required_feature_still_quarantines_the_row(col, bad):
+    df = make_month_df()
+    df.loc[0, col] = bad
+    v = validate_month(df, "2019-01")
+    assert v.status == "warn" and v.quarantined_rows == 1
+    assert not bool(usable_features_mask(df).iloc[0])
+
+
+def test_duration_count_excludes_quarantined_rows():
+    df = make_month_df()
+    df.loc[0, "CRSElapsedTime"] = -5.0
+    df.loc[0, "Origin"] = None            # row quarantined for another reason
+    v = validate_month(df, "2019-01")
+    assert v.quarantined_rows == 1 and v.duration_set_nan_rows == 0
 
 
 def test_many_out_of_range_rows_fail_the_batch():

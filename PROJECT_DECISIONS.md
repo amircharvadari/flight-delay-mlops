@@ -3,7 +3,7 @@
 Project: MLOps Pipeline for Flight Delay Prediction using BTS On-Time Performance Data
 Course: AIN4312 Special Topics in Artificial Intelligence Engineering (2026/27), Bahcesehir University
 Owner: Amirhassan Charvadari (individual project)
-Last updated: 2026-11-18 (revision 11: D-024 extended with two masks and the population rule; I-14, I-15; revision 10: D-024 validation responsibilities; I-13 nullability conflict fixed; D-013 invalid labels made non-fatal)
+Last updated: 2026-11-18 (revision 16: D-030 resolves O-019 and revises D-023; re-validation of 84 months; revision 15: P-005 approved as D-029, D-028 implausible durations, O-017 resolved, O-018, O-019, I-20; revision 14: D-026 model-specific categorical handling, D-027 scheduled duration source, O-017, I-18, I-19; revision 13: M2 feature contract D-025, P-005 implemented pending approval, I-16, I-17; revision 12: O-015 resolved, M0 and M1 closed; revision 11: D-024 extended with two masks and the population rule; I-14, I-15; revision 10: D-024 validation responsibilities; I-13 nullability conflict fixed; D-013 invalid labels made non-fatal)
 
 Status legend: DECIDED = approved by the owner. CANDIDATE = option that must be compared experimentally before a choice is made. PROPOSED = recommended, awaiting approval. ASSUMPTION = taken as true without proof, must be stated in the report. OPEN = unresolved.
 
@@ -117,6 +117,8 @@ A single corrupt row must not reject a whole monthly batch. Rows whose feature v
 - Alternatives considered: fail the whole batch on any violation (rejects 45.8M-row months for 1 bad row); silently drop bad rows (hides data-quality information). Quarantine with a threshold keeps the batch usable and the problem visible.
 - Observed in the real data: 16 quarantined rows across all 84 months, including a flight with CRSElapsedTime = -77 minutes (2020-01) and a flight with no flight number (2024-08).
 
+- REVISED 2026-11-18 by D-030: CRSElapsedTime is no longer a quarantine criterion. Out-of-range or implausible durations set only the duration feature to missing; the 0.5% threshold and whole-row quarantine still apply to the required features (date, airline, flight number, airports, scheduled times, distance).
+
 ### D-024 Validation layer responsibilities and the training-row gate — DECIDED (2026-11-18)
 Each kind of problem is checked in exactly one layer.
 - Structural layer (can fail a batch): required columns present; dtype of every column (Pandera); Cancelled and Diverted contain only 0/1; no non-null FlightDate outside the batch month; no duplicate flights on the natural key; quarantined share not above 0.5%.
@@ -146,6 +148,72 @@ Where quarantine is applied: two masks (extended 2026-11-18 after owner review)
 - Requirement for M2 onward: every step that builds training, test or performance-monitoring data must use training_row_mask(); every scoring and drift step must use usable_features_mask(); each such step needs a test proving that excluded rows are absent from its output. Until M2 is implemented, no training data exists, so no row has been removed yet.
 - Validation report fields: usable_feature_rows (feature mask) and training_rows (training mask). The earlier field usable_rows (introduced in I-13) is replaced by training_rows with identical values.
 - Quarantined rows cannot be scored; how they are reported in the replay is OPEN (O-016).
+
+### D-025 Feature contract — DECIDED (2026-11-18, M2)
+Module: src/flightdelay/features.py.
+- build_features(df, vocab) is a pure function. Input: rows already selected with a D-024 mask, plus a category vocabulary. Output: one row per input row, same index, exactly FEATURE_COLUMNS in a fixed order with fixed dtypes.
+- Allowlist: the function first selects FEATURE_SOURCE_COLUMNS and derives every feature from that subset only, so no other column can influence the output. FORBIDDEN_COLUMNS lists every post-departure and outcome field of the BTS table (D-003) plus the target; a runtime check refuses an allowlist that contains any of them. FEATURE_SOURCE_COLUMNS must be a subset of allowed_feature_columns in configs/base.yaml.
+- Row selection is not done inside build_features: scoring_frame() applies usable_features_mask (rows without a label stay in), training_frame() applies training_row_mask and returns X and y. build_features raises if it receives a quarantined row, so a caller cannot skip the mask silently.
+- Categorical encoding uses a vocabulary fitted on training rows only (fit_vocabulary). Codes never depend on which categories appear in a batch. A category not in the vocabulary becomes missing (NaN), not a new code. The vocabulary is a JSON-serialisable dict.
+- Each model version must carry the vocabulary it was trained with, and a retrained model gets a vocabulary re-fitted on its own training window (evidence: section 3.7, unseen airline QX in 2021-2022). To be implemented in M3 / M6.
+- Fails loudly on: missing allowlisted column, non-numeric time or distance column, non-datetime FlightDate, missing vocabulary entry.
+- Alternatives considered: letting LightGBM / XGBoost encode pandas categories themselves (codes would follow each batch's category list unless both libraries remap identically; harder to verify); one-hot encoding (about 740 columns for airports, slower, no benefit for tree models); target encoding (uses labels, adds leakage risk).
+
+### D-026 Model-specific handling of the categorical features — DECIDED for M3 (2026-11-18)
+The M2 feature contract is unchanged: airline, origin and dest are pandas `category` columns with categories fixed by the vocabulary (D-025). They are NOT integer-coded features; the integer codes exist only inside the category dtype.
+Verified on this environment (lightgbm 4.7.0, xgboost 3.4.1; scripts/verify_model_encoding.py, section 3.8):
+- A pattern that no single ordinal split can learn (positive for categories 2 and 4 of 4): one split on the category dtype reaches accuracy 1.00 in both libraries; one split on the integer codes reaches 0.75. So the libraries split nominally on the category dtype and ordinally on integer codes.
+- LightGBM detects the category columns automatically and uses equality (nominal) splits on airline, origin and dest.
+- XGBoost uses set-based (nominal) splits on the same three features. In xgboost 3.4.1 the sklearn wrapper's default is enable_categorical=True; older versions raised an error instead. M3 must set enable_categorical=True and tree_method="hist" explicitly, not rely on the default.
+- Logistic regression rejects the raw frame (ValueError on the category strings), so it cannot silently use the codes.
+Handling in M3:
+- LightGBM and XGBoost receive the M2 frame as is. Rule: never pass `.cat.codes` or any integer encoding of these columns to a model.
+- Logistic regression (reference model) gets a model-specific preprocessing pipeline: one-hot encoding with handle_unknown="ignore" for airline, origin, dest and also for month, day_of_week, dep_hour and arr_hour (cyclic or nominal values that a linear model must not treat as an ordered scale); median imputation plus standard scaling for distance and crs_elapsed_time, and a separate MissingIndicator(features="all") column for crs_elapsed_time (revised by D-028); the minute-of-day features are not given to the linear model (redundant with the one-hot hour). Verified that this pipeline fits and scores a batch with unseen categories (787 encoded columns on the test sample).
+- Unseen categories (NaN after D-025): tree models route them as missing values; the one-hot encoder maps them to all zeros. Both verified to predict without error on 2021-07, which contains 11,400 rows of the unseen airline QX.
+- Integer features such as month or dep_hour are acceptable as numbers for tree models, which can split them several times.
+- M3 test to add: a model-input test that fails if a categorical feature reaches a model as an integer dtype.
+
+### D-027 Source of the scheduled-duration feature — DECIDED (2026-11-18)
+crs_elapsed_time is the BTS field CRSElapsedTime, copied unchanged. It is never computed from CRSDepTime and CRSArrTime, because those are local clock times: their difference is wrong for flights that cross time zones, and ambiguous for flights that cross midnight. ActualElapsedTime and AirTime are post-departure and remain forbidden.
+Evidence on 2019-2024 (section 3.8): CRSElapsedTime minus the local clock difference is a whole number of hours in 99.997% of rows, with the offsets of U.S. time zones (JFK->LAX +3 h, LAX->JFK -3 h, ORD->ATL -1 h, HNL->LAX -2 or -3 h depending on daylight saving time). A naive clock difference wrapped over midnight would be wrong by about 22-23 h on 41,943 rows where a westbound flight lands at an earlier local clock time on the same day. The field is therefore time-zone and midnight aware. Its pre-departure availability remains assumption A-001.
+Test: test_scheduled_duration_comes_from_crs_elapsed_time_not_clock_times.
+
+### D-028 Implausible scheduled durations become missing, the row is kept — DECIDED (2026-11-18, resolves O-017)
+Owner decision: an implausible CRSElapsedTime must not quarantine the flight. Only the crs_elapsed_time feature is set to missing (NaN); the row, its label and its other features are kept for scoring and training.
+Rule (implausible_duration_mask, defined in validate.py since D-030 and applied inside build_features), using only scheduled, pre-departure fields:
+- too short: implied scheduled block speed = Distance / (CRSElapsedTime / 60) > 650 mph;
+- too long: CRSElapsedTime > 180 min + Distance / 150 mph.
+Both limits are inclusive (a value exactly at the limit is plausible). A missing duration is not flagged.
+Justification of the thresholds (data: usable rows 2019-2024, 38.76 million; no 2025 data):
+- 650 mph: the 99.999th percentile of block speed is 550 mph, and the median is 318 mph. Block time includes taxiing, so the average block speed of a real schedule is below the cruising speed of a jet airliner. 650 mph leaves about 100 mph of margin above the observed 99.999th percentile and is still far below the flagged values (for example 699 miles in 1 minute = 41,940 mph; 1,476 miles in 5 minutes).
+- 180 min + distance at 150 mph: allows up to three hours of fixed overhead (taxi, airport congestion, schedule padding) plus travel at a block speed less than half of the median. The 99.99th percentile of scheduled duration in every distance band is far below the limit (0-250 mi: 114 min vs a limit of at least 180 min; 1,500-2,000 mi: 345 min vs at least 780 min). Flagged examples: LGA-BOS 184 mi in 727 min; MSP-GFK 284 mi in 948 min; JFK-SLC 1,990 mi in 1,312 min.
+- Effect: 95 durations set to missing in 2019-2024 (in addition to 147 missing in the source); no row removed; scoring and training row counts unchanged in all 72 months.
+- The thresholds are deliberately loose: they remove only values that are physically impossible or clearly wrong, not unusual but real schedules.
+Alternatives considered: quarantine the row (rejected by the owner: loses a usable flight for one bad field); a per-route median rule (stateful, must be fitted per training window, harder to explain); clipping to the limit (would invent a value).
+Model handling of the missing values (scripts/verify_model_encoding.py, section 3.9):
+- XGBoost learns a default direction for missing values even if the training data has none; NaN is not treated like 0.
+- Logistic regression: median imputation plus MissingIndicator(features="all") in a separate column, so the input width is the same whether or not the training window contains missing durations (updates the D-026 pipeline, which used add_indicator=True).
+- LightGBM: if the training data contains missing durations, it learns a direction (missing_type NaN). If it contains none (missing_type None), a NaN at prediction time is treated like the value 0, i.e. like the shortest possible flight. In 2019-2024 every rolling 12-, 24- and 36-month window contains at least 7 missing durations (at least 9 for 12-month windows after D-030), so this does not occur in the development period; it is guarded in M3 (O-018).
+
+### D-029 Final feature list — DECIDED (2026-11-18, owner approval of P-005)
+The 12 features and the exclusions listed in P-005 are approved: flight number and year are not used.
+
+### D-030 A duration-only problem never quarantines a row — DECIDED (2026-11-18, resolves O-019, revises D-023)
+Owner decision, applying the D-028 principle consistently.
+- row_quarantine_mask() no longer checks CRSElapsedTime. Whole-row quarantine remains for genuinely unusable REQUIRED features: missing FlightDate, airline, flight number, origin or destination; scheduled departure or arrival time outside 0-2400; distance outside 1-6000 miles or missing.
+- implausible_duration_mask() now covers both cases and is defined once, in validate.py (features.py imports it, a test checks that it is the same object):
+  - impossible: CRSElapsedTime below 1 minute or above 1,600 minutes (the former D-023 range);
+  - implausible for the distance: the D-028 speed and overhead rules.
+  In both cases only crs_elapsed_time becomes missing; the row, its label and its other features are kept.
+- The validation report has a new informational field duration_set_nan_rows (usable rows whose duration feature becomes missing). It does not create a warning: a few such rows per month are routine and do not affect the usability of a batch. Changing it into a warning would turn many months from pass to warn without new information.
+- Effect of the re-validation (2026-11-18, all 84 months, Parquet only, same established procedure):
+  - Quarantined rows: 16 -> 1. Fifteen of the sixteen rows had only a duration problem; the remaining one is the 2024-08 flight without a flight number.
+  - Status: 65 pass / 19 warn -> 74 pass / 10 warn / 0 fail. Nine months changed from warn to pass because their only warning was the quarantine (2020-01, 2021-12, 2022-01, 2022-10, 2023-03, 2023-12, 2024-03, 2025-11, 2025-12); two months keep a warning for another reason (2021-01: new airline QX; 2022-12: missing label on a flight that was not cancelled or diverted).
+  - 2019-2024: usable_feature_rows +10, training_rows +7. 2025 (established fields only): quarantined 5 -> 0, usable_feature_rows +5, training_rows +1.
+  - Unchanged in every month: rows, labeled_rows, excluded_rows, delay rate, duplicates, errors.
+  - Feature check 2019-2024: scoring rows 38,761,862 -> 38,761,872; training rows 37,786,680 -> 37,786,687; durations set to missing 95 -> 105 (the 10 formerly quarantined rows); total missing durations 242 -> 252; the feature-check count equals duration_set_nan_rows of the validation report in all 72 months.
+  - The new duration count for 2025 is recorded by the validation procedure but was not analysed or used for any decision (D-020). The thresholds were fixed on 2019-2024 before this run.
+- Raw BTS zips: all 84 SHA-256 hashes still equal the hashes recorded in the manifest at ingestion (2026-11-16). Processed Parquet files and the manifest: hashes unchanged.
 
 ### D-014 Design first, then measure — DECIDED (2026-11-15)
 Hardware does not limit the architecture, the model choice, the training strategy or the experimental scope in advance. The technically and scientifically appropriate design is defined first; its real resource use is then measured and optimised. The early benchmark (section 3.3) is information, not a constraint. If a strategy cannot be run after optimisation, this is reported as a measured result with numbers.
@@ -229,8 +297,17 @@ The pipeline steps are written as plain Python functions with a command-line ent
 ### P-003 Storage — PROPOSED
 Keep the original zip files unchanged as the raw layer. Convert each month to one Parquet file with selected columns and compact data types (follows D-010).
 
-### P-005 Final feature list — PROPOSED
-Start from the candidate features in D-003. Redundant variants (IDs, city and state names, time blocks) will be reduced after inspection.
+### P-005 Final feature list — APPROVED 2026-11-18 (see D-029)
+12 features from 8 source columns:
+- Calendar from FlightDate: month, day_of_week (Monday = 0), day_of_month.
+- Schedule from CRSDepTime / CRSArrTime (local hhmm, 2400 read as 00:00): dep_hour, dep_minute_of_day, arr_hour, arr_minute_of_day.
+- Route: crs_elapsed_time (NaN kept: legitimately missing in the source), distance.
+- Categorical: airline, origin, dest.
+Deliberately NOT used, although allowed by D-003:
+- Flight_Number_Reporting_Airline: an identifier with thousands of values that are reassigned over time; the model would memorise numbers instead of learning patterns.
+- Year: the model is always applied to a later period than it was trained on, so year values at scoring time lie outside the training range; tree models cannot extrapolate, and the feature would only describe the past.
+- IDs, city and state names, DepTimeBlk / ArrTimeBlk: redundant with features already present.
+Not yet included (candidates for later, only with evidence): holidays, historical delay rates per route (would need careful time-lagging to avoid leakage).
 
 ## 3. Verified facts (from files on disk)
 
@@ -348,15 +425,55 @@ Source: image of the official project list in the Claude project files ("PROJECT
 - The report template (AIN4312) does not mention Docker, Kubernetes or Airflow.
 Reading: the three tools are given as examples ("like"). MLflow is already in the stack. An orchestrator and container deployment are named, so they cannot be dismissed as unnecessary without checking with the instructor (O-012). The earlier statement in this log that an orchestrator is "infrastructure without benefit" is withdrawn.
 
-### 3.6 M1 ingestion and validation of all 84 months (2026-11-16)
+### 3.6 M1 ingestion and validation of all 84 months (2026-11-16; closed 2026-11-18, commit d6e4ef3)
 
 - 84/84 months converted to Parquet (13 columns, compact dtypes): 45,763,492 rows, 288 MB total.
 - Manifest: data/manifest.csv — SHA-256, sizes, row counts, timestamps per month.
 - Validation report: data/validation_report.csv (copy in report/evidence/validation_report_2019_2025.csv).
 - Final statuses: 65 pass, 19 warn, 0 fail. Quarantined rows in total: 16.
 - Re-validated 2026-11-18 after I-13 (validation rules changed, data unchanged; manifest hash unchanged): 65 pass, 19 warn, 0 fail; identical counts in every month. Invalid non-null labels: 0. Rows usable by training_row_mask(): 44,666,163 of 45,763,492 (97.602%). 7 rows are both quarantined and label-excluded.
+- Re-validated 2026-11-18 after D-030 (duration no longer a quarantine criterion): 74 pass, 10 warn, 0 fail; 1 quarantined row; usable_feature_rows 45,763,491; training_rows 44,666,171 (section 3.10).
 - Re-validated again 2026-11-18 after I-14 and I-15 (data unchanged: manifest and 84 Parquet SHA-256 hashes verified): usable_feature_rows 45,763,476; training_rows 44,666,163. Compared with scripts/compare_validation_reports.py --strict against the report before I-13 (wording change normalised) and against the report after I-13: no differences in any shared column, 65 pass / 19 warn / 0 fail in both. Warnings: airline-set changes (EV, QX, YV, 9E), 15 quarantined rows, 5 unlabeled-but-not-cancelled rows.
 - Label exclusions (D-013): 1,097,320 rows = 2.40% of all rows, reported per month in the validation report.
+
+### 3.10 D-030 re-validation and feature check (2026-11-18)
+
+Evidence files (overwritten with the new results; the previous versions are summarised in D-030): report/evidence/validation_report_2019_2025.csv, report/evidence/feature_check_2019_2024.csv.
+Comparison command: python scripts/compare_validation_reports.py <report before D-030> report/evidence/validation_report_2019_2025.csv. Differences: status in 9 months, quarantined_rows / usable_feature_rows in 11 months, training_rows in 7 months, warning text in 12 months (11 changed months plus the wording "required" in 2024-08); new column duration_set_nan_rows. All other columns identical.
+
+### 3.9 D-028 implausible-duration rule (2026-11-18)
+
+Thresholds derived from usable rows of 2019-2024 (38,761,715 rows with a duration; month-by-month; no 2025 data):
+- Block speed (mph) quantiles: median 318.3; 99.9% 502.2; 99.99% 531.4; 99.999% 549.8; 99.9999% 780.7; maximum 41,940 (699 miles in 1 minute).
+- Scheduled minutes by distance band (median / 99.99% / maximum): 0-250 mi 66 / 114 / 1,425; 250-500 mi 90 / 140 / 948; 500-1,000 mi 134 / 204 / 1,003; 1,000-1,500 mi 185 / 274 / 1,162; 1,500-2,000 mi 248 / 345 / 1,312; 2,000-3,000 mi 330 / 435 / 480; 3,000-6,000 mi 470 / 707 / 710.
+- Rows flagged: too short (> 650 mph) 53; too long (> 180 min + distance at 150 mph) 42; 95 in total (feature_check_2019_2024.csv, column duration_set_nan_d028).
+- After the rule: 242 missing durations in 72 months (147 in source + 95 set). Every rolling 12-month window contains at least 7, every 24-month window at least 21, every 36-month window at least 43. 17 single months contain none.
+- Compared with the evidence before D-028: only crs_elapsed_nan changed; scoring and training rows identical in all 72 months; data hashes unchanged.
+- Model handling (scripts/verify_model_encoding.py, exit code 0): XGBoost and logistic regression handle missing durations with or without missing values in training; logistic regression keeps the same input width and sets the indicator; LightGBM: see D-028 and O-018.
+
+### 3.8 M2 verification: categorical handling and scheduled duration (2026-11-18)
+
+Categorical handling: output of scripts/verify_model_encoding.py (fit on 200,000 training rows of 2019-07, scoring on 2021-07; no metrics computed; no 2025 data):
+- One-split test (4 categories, positive for 2 non-adjacent ones): LightGBM category 1.00 vs integer codes 0.75; XGBoost category 1.00 vs integer codes 0.75; XGBoost without enable_categorical: 1.00, set-based split, default enable_categorical=True in 3.4.1.
+- LightGBM: equality splits on airline, dest, origin. XGBoost: set-based splits on airline, dest, origin. Both predict all 583,258 rows of 2021-07 including 11,400 rows with unseen airline QX.
+- Logistic regression: raw frame rejected (ValueError: could not convert string to float: 'WN'); one-hot pipeline fits (787 encoded columns) and predicts the same batch.
+
+Scheduled duration on 2019-2024 (72 months, 38,761,873 rows with schedule times; month-by-month processing):
+- hhmm values with minutes >= 60: 0. Value 2400: 1 departure and 132 arrivals (read as 00:00).
+- CRSElapsedTime minus local clock difference is a whole number of hours in 99.9971% of rows; 1,139 rows differ by a few minutes (source inconsistencies, e.g. SJC->SNA 21:01-22:35 with 95 min).
+- Offset distribution (hours, count): 0: 20,211,577; +1: 6,025,949; -1: 6,066,253; +2: 1,924,462; -2: 1,926,214; +3: 1,246,983; -3: 1,245,734; +4 to +7 and -4 to -7: 71,460 in total (Alaska, Hawaii); -22/-23: 41,943 (westbound arrivals at an earlier local clock time, where a naive midnight wrap fails); -24, -21, -20, -18, -16: 12 in total.
+- After quarantine, CRSElapsedTime ranges from 1 to 1,425 min; 16 rows above 720 min (O-017).
+
+### 3.7 M2 feature pipeline on real data (2026-11-18)
+
+Script: scripts/check_features.py (read-only; refuses holdout months). Evidence: report/evidence/feature_check_2019_2024.csv.
+- Months checked: 2019-01 to 2024-12 (72). 2025 deliberately not checked: per-month feature statistics such as unseen-category rates would reveal the holdout (D-020).
+- Vocabulary fitted on 2019 training rows: 17 airlines, 360 origins, 360 destinations.
+- In all 72 months: scoring rows equal usable_feature_rows and training rows equal training_rows in the validation report; feature columns and dtypes as declared; labels only 0 and 1; no missing values in numeric features except crs_elapsed_time (147 rows in total).
+- Totals: 38,761,862 scoring rows; 37,786,680 training rows.
+- Unseen categories with the 2019 vocabulary (maximum monthly share per year): airline 0% in 2019-2020, up to 2.51% in 2021 and 1.52% in 2022 (QX, active 2021-2022), 0% in 2023-2024; origin and destination at most 0.18%.
+- Memory: at most 18.6 MB per month for the scoring feature matrix. Peak process memory for 36 months with the 2019 vocabulary: about 1.7 GB.
+- Manifest and all 84 Parquet SHA-256 hashes unchanged after the run.
 
 ### 3.5 M0 environment check (2026-11-15)
 
@@ -367,7 +484,7 @@ Note: pandas 3 is a new major version; code must not rely on pandas 2 behaviour 
 
 ## 3b. Assumptions
 
-- A-001 CRS schedule fields equal the schedule known before departure (BTS readme does not state when they are frozen).
+- A-001 CRS schedule fields (CRSDepTime, CRSArrTime, CRSElapsedTime) equal the schedule known before departure (BTS readme does not state when they are frozen). OPEN: kept as a documented assumption until a BTS source confirms when these fields become available (reconfirmed by the owner 2026-11-18). The features depend on it (D-003, D-027, D-028); it must be stated as a limitation in the report.
 - A-002 In the simulation, the labels of month t become available before the batch of month t+1 is processed. In reality BTS publishes with a delay of roughly two months.
 - A-003 The first benchmark (Linux VM, 3.9 GB RAM, scikit-learn model, naive loader) only indicates the order of magnitude. It does not represent the final models or native macOS.
 - A-004 SUPERSEDED 2026-11-15: deadline is 2026-11-27 (D-021).
@@ -387,8 +504,12 @@ Note: pandas 3 is a new major version; code must not rely on pandas 2 behaviour 
 - O-011 Repeat the benchmark natively on macOS once the project environment exists.
 - O-012 RESOLVED 2026-11-16 by the instructor: Airflow and Kubernetes are optional and count as a positive point, not a requirement. Priority is finishing the main part; they are added only if time remains. C-004 stays optional with this ruling.
 - O-014 Selection margin between model/window options (D-022). Must be fixed before the grid runs.
-- O-015 Native macOS test run and GitHub Actions status still unconfirmed by the owner (M0 exit criterion partially open).
+- O-015 RESOLVED 2026-11-18 (confirmed by the owner): native macOS `uv run pytest -q` -> 41 passed in 7.06 s; `uv run ruff check .` -> all checks passed; GitHub Actions CI run #2 for commit d6e4ef3 completed successfully in 27 s. M0 exit criterion met. Commit d6e4ef3 verified in the local repository by the assistant; the CI result itself was not visible to the assistant.
 - O-016 How the replay scoring step reports quarantined rows that cannot be scored (count only, or also a separate volume-monitoring signal). Decide in M6.
+- O-017 RESOLVED 2026-11-18 by D-028: implausible durations are set to missing; the row is kept.
+- O-018 LightGBM and missing durations: a LightGBM model trained on a window without any missing crs_elapsed_time treats a missing value at prediction time like 0 minutes (D-028). Not observed in 2019-2024 windows, but cannot be checked for windows that include 2025. Recommended for M3: record the number of missing durations in each training window in the model metadata, and if it is zero, impute missing durations at scoring time with the training-window median for LightGBM; add a test. Decide in M3.
+- O-019 RESOLVED 2026-11-18 by D-030: out-of-range durations no longer quarantine the row.
+- O-013 (update 2026-11-18) Feature matrices take at most 18.6 MB per month in memory (section 3.7), about 1.3 GB for 72 months before model training. Training memory still unmeasured.
 - O-013 Can the expanding window (up to 72 months, about 46 million rows) be trained within the available memory after optimisation? To be measured, not assumed.
 
 ## 5. Issue log (feeds report Section 7)
@@ -407,6 +528,11 @@ Note: pandas 3 is a new major version; code must not rely on pandas 2 behaviour 
 | I-13 | A null in Origin, Dest, CRSDepTime, CRSArrTime, Distance or FlightDate failed the whole batch instead of being quarantined; an ArrDel15 value outside {0, 1} also failed the whole batch instead of being excluded | Code review by the owner (failing test added for Origin). Cause: when fixing I-11 the schema was changed only for the observed column (flight number) instead of for every column in REQUIRED_NOT_NULL; no test checked the policy as a whole. The 28-day test fixture also produced a warning in every case, so "warn" assertions were weak | D-024: REQUIRED_NOT_NULL columns nullable in the schema (dtype still checked); missing FlightDate quarantined, non-null wrong-month date still fatal; ArrDel15 value check moved to row level with invalid_label_rows count and warning; training_row_mask() added as the single row gate; fixture now covers the full month; module docstring corrected | 34 tests pass, ruff clean. Parameterized test over all 8 REQUIRED_NOT_NULL columns, consistency test, invalid-label tests (2.0, -1.0, 0.5), structural tests (dtype, missing column, Cancelled flag, wrong month, quarantine threshold 0.5% boundary). Mutation check: re-introducing each bug in a copy of the code makes 3, 3 and 9 tests fail respectively. Re-validation of 84 Parquet files: statuses, counts and errors identical to before; only warning wording changed in 12 months (evidence: report/evidence/validation_report_2019_2025_before_I13.csv vs validation_report_2019_2025.csv) |
 | I-14 | A single training_row_mask() was used for every purpose, although scoring and feature-drift monitoring do not need a label; filtering the scoring batch with label-derived columns would also leak the outcome. Separately, the before/after comparison for I-13 was run as an inline script that was not saved | Owner review of I-13 | Two masks with a usage table and a population rule (D-024); test that the feature mask ignores Cancelled, Diverted and ArrDel15; comparison saved as scripts/compare_validation_reports.py with its own tests (dtype-safe numeric comparison, string comparison, wording normalisation, exit code) | 41 tests pass, ruff clean. Mutation check: a feature mask that drops cancelled flights makes 2 tests fail. Training-mask counts identical to the earlier usable_rows in all 84 months |
 | I-15 | After renaming a report field, the old column survived in validation_report.csv as NaN, because merging old and new reports with concat keeps the union of columns | Found by the new comparison script in --strict mode | merge_validation_report() keeps only the columns the current validator produces; unit test added | Re-validation: no stale column; comparison against both earlier reports shows no differences in shared columns |
+| I-16 | The main leakage test changed outcome columns but not the target itself; a mutant feature built from ArrDel15 was caught only because a second test drops the column | M2 mutation check | The leakage test now also flips ArrDel15 and sets Diverted from it | Mutant now fails 2 tests; 70 tests pass |
+| I-17 | pandas 3 deprecates building a Categorical from values outside its category list (will raise in a future version); also Series.dt.dayofweek | M2 tests (Pandas4Warning) | Unseen categories set to missing explicitly before encoding; dt.day_of_week used | Test suite passes with DeprecationWarning and FutureWarning turned into errors |
+| I-18 | XGBoost behaviour for category columns depends on the library version: older versions raised an error without enable_categorical, version 3.4.1 accepts them because its default is now enable_categorical=True | M2 verification (scripts/verify_model_encoding.py) | Recorded in D-026: M3 sets enable_categorical=True and tree_method="hist" explicitly; integer codes never passed to models | Verified: nominal splits in both libraries; integer codes give ordinal splits (accuracy 0.75 vs 1.00 on the one-split test) |
+| I-19 | Loading 72 months at once with 64-bit intermediate columns was killed by the operating system (out of memory, exit 137) in the 3.9 GB VM | M2 verification script | Analysis rewritten to process one month at a time (peak about 0.3 GB) | Completed on 72 months; confirms the D-010 rule of monthly processing |
+| I-20 | LightGBM treats a missing value at prediction time like 0 when the feature had no missing values in its training data (missing_type None) | D-028 verification of the three models | Recorded in D-028; guard proposed for M3 (O-018); all 2019-2024 rolling windows checked: none without missing durations | Split metadata: missing_type None vs NaN in the two training variants |
 | I-10 | Ruff reported 5 errors, all in the benchmark scripts under report/evidence | M0 setup; evidence scripts were written before the lint rules | report/ excluded from ruff; scripts kept unchanged as evidence | ruff check passes |
 | I-06 | First draft of the promotion rule did not state that the candidate must be validated on data outside its training window | Design review | Chronological procedure defined (D-007, P-001) | To be covered by a test in the implementation |
 | I-07 | Monthly delay rate varies from 14% to 25% inside 2019 | Data inspection; seasonality | Prevalence change separated from feature drift (D-008) | Reference window still open (O-007) |
