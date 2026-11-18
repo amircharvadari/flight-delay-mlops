@@ -1,0 +1,42 @@
+# Fixed model configurations (D-022, D-031). Written and committed BEFORE any
+# experiment run. No value in this file may be tuned on test months.
+seed: 42
+
+historical_rate:
+  # Hierarchical smoothing (D-031):
+  #   p_global  = mean delay rate of the training window
+  #   p_airline = (s_a + k_airline * p_global)  / (n_a + k_airline)
+  #   p_combo   = (s_c + k_combo   * p_airline) / (n_c + k_combo)
+  # s = delayed flights, n = flights in the training window for that group.
+  # k is a fixed prior strength in pseudo-flights: with n = k the group's own
+  # rate and the parent rate get equal weight.
+  prior_strength_airline: 100
+  prior_strength_combination: 50
+
+logreg:
+  C: 1.0
+  max_iter: 1000
+  solver: lbfgs
+
+lightgbm:
+  n_estimators: 300
+  learning_rate: 0.05
+  num_leaves: 63
+  max_depth: 8
+  subsample: 0.8
+  subsample_freq: 1          # LightGBM only applies `subsample` when this is >= 1
+  colsample_bytree: 0.8
+  random_state: 42
+  deterministic: true
+  force_col_wise: true
+  verbose: -1
+
+xgboost:
+  n_estimators: 300
+  learning_rate: 0.05
+  max_depth: 6
+  subsample: 0.8
+  colsample_bytree: 0.8
+  tree_method: hist
+  enable_categorical: true   # explicit, not the library default (D-026, I-18)
+  random_state: 42

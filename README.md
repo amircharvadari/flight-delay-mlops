@@ -17,3 +17,22 @@ make test        # runs the test suite
 ## Data
 
 Raw files are not stored in git. Download the 84 monthly zip files (2019-01 to 2025-12) from BTS TranStats into `data/raw/bts/`.
+
+## Training (M3)
+
+```bash
+# one tracked MLflow run per model (fixed smoke window, no selection)
+uv run python -m flightdelay.run_train --model all --train-from 2021-01 --train-to 2021-12 \
+    --eval-month 2022-01 --experiment M3_smoke
+
+# training time and peak memory, 4 models x 4 window strategies
+uv run python scripts/benchmark_training.py
+
+# both at once
+make m3-exit
+
+# browse runs
+uv run mlflow ui --backend-store-uri sqlite:///mlflow.db
+```
+
+Model configurations are fixed in `configs/models.yaml` (D-022, D-031). Holdout months (2025) are refused by the training CLI.

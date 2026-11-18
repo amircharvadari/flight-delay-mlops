@@ -5,7 +5,7 @@ data/*
 # Experiment tracking and model artifacts (local)
 mlruns/
 mlartifacts/
-mlflow.db
+mlflow.db*
 artifacts/
 
 # Python
