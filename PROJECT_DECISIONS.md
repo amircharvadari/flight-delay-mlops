@@ -3,7 +3,7 @@
 Project: MLOps Pipeline for Flight Delay Prediction using BTS On-Time Performance Data
 Course: AIN4312 Special Topics in Artificial Intelligence Engineering (2026/27), Bahcesehir University
 Owner: Amirhassan Charvadari (individual project)
-Last updated: 2026-11-18 (revision 17: M3 implementation, D-031 baseline formula, D-032 model wrapper and tracking, O-018 guard implemented, I-21, I-22, O-020; revision 16: D-030 resolves O-019 and revises D-023; re-validation of 84 months; revision 15: P-005 approved as D-029, D-028 implausible durations, O-017 resolved, O-018, O-019, I-20; revision 14: D-026 model-specific categorical handling, D-027 scheduled duration source, O-017, I-18, I-19; revision 13: M2 feature contract D-025, P-005 implemented pending approval, I-16, I-17; revision 12: O-015 resolved, M0 and M1 closed; revision 11: D-024 extended with two masks and the population rule; I-14, I-15; revision 10: D-024 validation responsibilities; I-13 nullability conflict fixed; D-013 invalid labels made non-fatal)
+Last updated: 2026-11-18 (revision 20: P-012 approved as D-034 with owner clarifications, O-020 resolved; revision 19: D-033 selection margin, P-012 alert-threshold proposal for O-020; revision 18: M3 closed on native macOS, O-013 resolved, O-021; revision 17: M3 implementation, D-031 baseline formula, D-032 model wrapper and tracking, O-018 guard implemented, I-21, I-22, O-020; revision 16: D-030 resolves O-019 and revises D-023; re-validation of 84 months; revision 15: P-005 approved as D-029, D-028 implausible durations, O-017 resolved, O-018, O-019, I-20; revision 14: D-026 model-specific categorical handling, D-027 scheduled duration source, O-017, I-18, I-19; revision 13: M2 feature contract D-025, P-005 implemented pending approval, I-16, I-17; revision 12: O-015 resolved, M0 and M1 closed; revision 11: D-024 extended with two masks and the population rule; I-14, I-15; revision 10: D-024 validation responsibilities; I-13 nullability conflict fixed; D-013 invalid labels made non-fatal)
 
 Status legend: DECIDED = approved by the owner. CANDIDATE = option that must be compared experimentally before a choice is made. PROPOSED = recommended, awaiting approval. ASSUMPTION = taken as true without proof, must be stated in the report. OPEN = unresolved.
 
@@ -236,6 +236,38 @@ Fixed prior strengths (configs/models.yaml, pinned by a test): k_a = 100, k_c = 
 - Evaluation in M3 (run_train --eval-month): average precision, ROC-AUC, prevalence and row count of the evaluation month, on training_row_mask rows. No selection decision is made in M3.
 - Known, accepted warning: MLflow suggests type hints on the pyfunc predict method. Adding them enables automatic data validation, whose behaviour with category columns is unverified; deferred to M5, where the API signature is designed.
 
+### D-033 Selection margin — DECIDED (2026-11-18, resolves O-014)
+The D-022 selection rule uses a margin of 0.005 in mean Average Precision over the 12 test months of the E1+E2 grid: the option with the highest mean AP is selected, unless a cheaper option (lower measured training time, then lower peak memory) is within 0.005 of it, in which case the cheaper option is selected. Fixed before the grid runs.
+
+### D-034 Alert threshold for precision, recall and F1 — DECIDED (2026-11-18, formerly P-012, resolves O-020)
+Principle (agreed by the owner): the share of flights flagged as "will be delayed" equals the delay prevalence of the model's own training window. This is precision and recall at a fixed alert budget (also called precision at k).
+
+Exact calculation, for a model M with training window W and a scored batch B:
+1. pi_train = share of delayed flights among the training rows of W (training_row_mask). Already stored in the model metadata as train_positive_rate when the model is fitted. Uses training labels only.
+2. S = the model's probabilities for every row of B with usable features (usable_features_mask, D-024): the same rows that are scored in the replay. B is never part of W (D-007), so every score is an out-of-sample prediction. No label of B is read.
+3. N = number of scores in S; k = max(1, round(pi_train x N)).
+4. Threshold tau = the k-th largest value in S.
+5. A flight is flagged if its probability >= tau. With tied scores more than k rows can be flagged; the realised alert rate is therefore always reported next to the target (relevant mainly for the historical-rate model, whose scores take fewer distinct values).
+6. Only after steps 1-5 are the labels of B used: precision, recall and F1 are computed on the labelled rows of B (training_row_mask), together with the realised alert rate on scored rows and on labelled rows.
+Recorded for every evaluation (owner requirement, 2026-11-18):
+- pi_train (target alert rate) and tau;
+- number of scored rows (N, usable-feature rows of B) and number of flagged rows among them, with the realised alert rate on scored rows;
+- number of labelled evaluation rows (training_row_mask rows of B), the number of flagged rows among them and the actual alert rate among labelled rows;
+- precision, recall and F1 on the labelled rows.
+Both alert rates are needed because the threshold is set on all usable-feature rows (including flights that were later cancelled or diverted and therefore have no label), while precision, recall and F1 can only be computed on labelled rows. The two rates differ whenever the flagged share among unlabelled rows differs from the share among labelled rows.
+
+Answers to the owner's questions:
+- Out-of-sample: yes. The scores come from a month that is not in the model's training window. In-sample training predictions are not used, because boosted trees fit their own training data more closely than new data, so a threshold from training scores would flag a different share of flights in a new month.
+- Historical: no, and this is deliberate. The threshold is set on the unlabelled scores of the batch being evaluated, not on an earlier month. A threshold taken from an earlier month would need a month that is out-of-sample for the model; every earlier month is inside its training window. Getting one would require either holding the last month of every window out of training (which changes the four window strategies of C-001) or fitting every model twice (doubling the 5-8 hour grid), and the result would still flag a different share in the evaluation month because predicted probabilities move with the season, as the delay rate does (14% to 25% inside one year, section 3.1).
+- Evaluation labels: never used to set the threshold. The only label-derived quantity is pi_train, computed from the training window. The evaluation month enters only through its unlabelled scores.
+- What the method does use from the evaluation month: the distribution of its scheduled flights' features, through the model's scores. This is information available before the month's flights depart, under assumption A-001 (schedules are fixed before departure). It is stated as part of the method in the report.
+- Consistency: one function, applied identically to all four models, all decision points of E1+E2, every month of the E3 replay and the E4 holdout. Because every model flags the same target share of the same batch, precision, recall and F1 are comparable across models. The primary selection metric remains Average Precision (D-016), which needs no threshold.
+- Reproducibility: deterministic (sorting, no randomness); every input (pi_train, the scores) is logged.
+
+Scope (owner clarification): this batch-level threshold is an EVALUATION POLICY. It answers "how good are the model's top-ranked flights when it raises as many alerts as the training delay rate", for comparable precision, recall and F1. It is not a single-flight decision threshold: tau depends on the whole batch, which a single API request does not have, so the value cannot be transferred directly to the API.
+Primary metric unchanged: model selection uses Average Precision (D-016, D-033). Precision, recall and F1 at this threshold are supplementary.
+Deferred to M5: the API threshold policy. One option to consider there: each model version stores the tau of its most recent eligible out-of-sample batch (for a promoted candidate, its shadow-evaluation batch, D-012), and the API applies that stored value. Its limitations (the stored tau comes from an earlier month whose score distribution and delay rate can differ from the month in which the API is used, so the realised alert rate will drift) must be documented with that decision.
+
 ### D-014 Design first, then measure — DECIDED (2026-11-15)
 Hardware does not limit the architecture, the model choice, the training strategy or the experimental scope in advance. The technically and scientifically appropriate design is defined first; its real resource use is then measured and optimised. The early benchmark (section 3.3) is information, not a constraint. If a strategy cannot be run after optimisation, this is reported as a measured result with numbers.
 
@@ -291,7 +323,7 @@ Experimental scope is reduced only if a schedule gate is missed (ARCHITECTURE_AN
 - Decision points: every third month from 2022-01 to 2024-10 (12 points). Each fit is tested on month t+1. All four windows are fully available at every point.
 - Fits: 2 x 4 x 12 = 96, plus the two reference models at the same points.
 - Hyperparameters: one fixed configuration per library, written in the config before any run and kept equal in spirit (same number of trees, learning rate and comparable depth). No tuning on test months. Limitation to report: results compare default-level configurations, not tuned optima.
-- Selection rule, fixed before the run: highest mean AP over the 12 test months; if two options differ by less than a predefined margin, the cheaper one (time and memory) is chosen. Margin OPEN (O-014).
+- Selection rule, fixed before the run: highest mean AP over the 12 test months; if two options differ by less than a predefined margin, the cheaper one (time and memory) is chosen. Margin: 0.005 AP (D-033).
 
 
 ## 2. Candidate strategies that require experiments
@@ -457,6 +489,28 @@ Reading: the three tools are given as examples ("like"). MLflow is already in th
 - Re-validated again 2026-11-18 after I-14 and I-15 (data unchanged: manifest and 84 Parquet SHA-256 hashes verified): usable_feature_rows 45,763,476; training_rows 44,666,163. Compared with scripts/compare_validation_reports.py --strict against the report before I-13 (wording change normalised) and against the report after I-13: no differences in any shared column, 65 pass / 19 warn / 0 fail in both. Warnings: airline-set changes (EV, QX, YV, 9E), 15 quarantined rows, 5 unlabeled-but-not-cancelled rows.
 - Label exclusions (D-013): 1,097,320 rows = 2.40% of all rows, reported per month in the validation report.
 
+### 3.12 M3 exit on native macOS (2026-11-18)
+
+Machine: macOS 26.6.2, arm64 (Apple M2), 8 CPU cores, 8.6 GB RAM. Code: commit 4fde377, git_dirty False for every run. Command: `make m3-exit`.
+
+Exit run (MLflow experiment M3_smoke, local SQLite): four runs, all FINISHED, one per model, window 2021-01 to 2021-12 (5,878,219 training rows), evaluation month 2022-01. Fit seconds: historical_rate 1.1, logreg 21.6, lightgbm 39.9, xgboost 48.3. M3 exit criterion met: all four models train and log one run each on native macOS. No selection decision is based on these runs.
+Measurement caveat: in a `--model all` run the four models share one process, so peak_rss_mb of the later models is the process peak so far, not the model's own peak. Per-model memory comes from the benchmark below, where every run is a separate process.
+
+Benchmark (report/evidence/benchmark_training_darwin_arm64.csv): windows ending 2024-10, one process per run, 30-minute limit. All 16 runs finished (status ok).
+
+| Window | Training rows | historical_rate fit / peak | logreg fit / peak | lightgbm fit / peak | xgboost fit / peak |
+| --- | --- | --- | --- | --- | --- |
+| 12 months | 6,937,835 | 1.2 s / 1,181 MB | 17.2 s / 1,586 MB | 47.8 s / 1,077 MB | 60.2 s / 1,370 MB |
+| 24 months | 13,616,298 | 2.5 s / 1,506 MB | 31.4 s / 2,041 MB | 100.6 s / 1,627 MB | 163.8 s / 2,034 MB |
+| 36 months | 20,164,480 | 3.6 s / 2,490 MB | 42.7 s / 3,157 MB | 132.5 s / 3,417 MB | 184.9 s / 3,368 MB |
+| expanding (70 months) | 36,629,922 | 6.6 s / 3,065 MB | 96.2 s / 4,232 MB | 273.6 s / 4,063 MB | 1,402.2 s / 4,138 MB |
+
+Window loading: 4.4 s (12 months) to 22.7 s (70 months).
+Reading:
+- O-013 answered: the expanding window (70 months, 36.6 million training rows) trains for all four models within 8.6 GB; highest peak 4.23 GB (logreg). The VM-based expectation that logistic regression would not fit was wrong: the float32 one-hot encoding kept it at 4.2 GB.
+- Training time per million rows is nearly constant for LightGBM (6.6 to 7.5 s), so it scales linearly. XGBoost is roughly linear up to 36 months (8.7 to 12.0 s per million rows) but takes 38.3 s per million rows on the expanding window, about four times more. The cause is not measured (O-021).
+- Rough machine-time estimate for the E1+E2 grid (D-022: 12 decision points x 4 windows x 2 candidate models, plus the 2 reference models), assuming the measured rates: about 5 to 8 hours, most of it XGBoost on expanding windows. The grid must therefore run unattended (overnight) and be able to resume after an interruption.
+
 ### 3.11 M3 mechanics check in the VM (2026-11-18)
 
 Purpose: prove that the four models train, evaluate, log and reload on real data. NOT the M3 exit run: made in the 3.9 GB Linux VM with uncommitted code (git_dirty would now be reported as True, I-22), stored only inside the VM. No decision is based on these numbers.
@@ -533,15 +587,15 @@ Note: pandas 3 is a new major version; code must not rely on pandas 2 behaviour 
 - O-010 Training-window strategy: now C-001, decided by experiment E2.
 - O-011 Repeat the benchmark natively on macOS once the project environment exists.
 - O-012 RESOLVED 2026-11-16 by the instructor: Airflow and Kubernetes are optional and count as a positive point, not a requirement. Priority is finishing the main part; they are added only if time remains. C-004 stays optional with this ruling.
-- O-014 Selection margin between model/window options (D-022). Must be fixed before the grid runs.
+- O-014 RESOLVED 2026-11-18 by D-033: margin 0.005 AP.
 - O-015 RESOLVED 2026-11-18 (confirmed by the owner): native macOS `uv run pytest -q` -> 41 passed in 7.06 s; `uv run ruff check .` -> all checks passed; GitHub Actions CI run #2 for commit d6e4ef3 completed successfully in 27 s. M0 exit criterion met. Commit d6e4ef3 verified in the local repository by the assistant; the CI result itself was not visible to the assistant.
 - O-016 How the replay scoring step reports quarantined rows that cannot be scored (count only, or also a separate volume-monitoring signal). Decide in M6.
 - O-017 RESOLVED 2026-11-18 by D-028: implausible durations are set to missing; the row is kept.
 - O-018 RESOLVED 2026-11-18 by D-032: guard implemented and tested (median fill for LightGBM when the training window has no missing durations, recorded in model metadata).
 - O-019 RESOLVED 2026-11-18 by D-030: out-of-range durations no longer quarantine the row.
-- O-020 Precision, recall and F1 (D-016) need a decision threshold. Not defined yet; M3 logs only threshold-free metrics. Must be fixed before the E1/E2 grid runs, together with O-014.
-- O-013 (update 2026-11-18) Feature matrices take at most 18.6 MB per month in memory (section 3.7), about 1.3 GB for 72 months before model training. Training memory still unmeasured.
-- O-013 Can the expanding window (up to 72 months, about 46 million rows) be trained within the available memory after optimisation? To be measured, not assumed.
+- O-021 XGBoost needs about four times more time per million rows on the 70-month expanding window than on 12-36-month windows (1,402 s vs about 185 s for 36 months), while LightGBM scales linearly. Possible causes (not measured): memory pressure or memory compression on the 8.6 GB Mac, or XGBoost's categorical split search on more rows. Matters for grid runtime, not for correctness; M4 should log per-fit time and resume after interruption.
+- O-020 RESOLVED 2026-11-18 by D-034 (batch-level evaluation threshold). API threshold policy deferred to M5.
+- O-013 RESOLVED 2026-11-18 (section 3.12): the expanding window (70 months, 36.6 million training rows) trains for all four models on the 8.6 GB Mac; peak memory 4.06 to 4.23 GB.
 
 ## 5. Issue log (feeds report Section 7)
 

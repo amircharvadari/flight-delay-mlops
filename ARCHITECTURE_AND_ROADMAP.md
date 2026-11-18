@@ -82,6 +82,16 @@ Hours are estimates of the owner's own time (reading, running, checking, writing
 
 Total owner effort: about 55 to 58 hours, an average of about 5.5 to 6 hours per day. This is slightly above the stated approximate capacity of 5 hours per day. Contingency: Wednesday 25 November (2 to 4 hours) plus debugging time included in each estimate. The buffer is thin; the gates in section 6 exist so that problems are detected early.
 
+### Progress (updated 2026-11-18)
+
+| Milestone | Status | Commit |
+| --- | --- | --- |
+| M0 Setup | done | 695f7ff |
+| M1 Data layer | done | d6e4ef3 |
+| M2 Features and leakage tests | done | 518fd73 |
+| M3 Training and tracking | done (exit run and benchmark on native macOS, section 3.12 of PROJECT_DECISIONS.md) | 4fde377 (+ evidence commit) |
+| Gate G1 | passed on 2026-11-18 | |
+
 ## 6. Gates and contingency (used only if a gate is missed)
 
 | Gate | Date | Must be true | If missed |
