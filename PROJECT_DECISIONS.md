@@ -3,7 +3,7 @@
 Project: MLOps Pipeline for Flight Delay Prediction using BTS On-Time Performance Data
 Course: AIN4312 Special Topics in Artificial Intelligence Engineering (2026/27), Bahcesehir University
 Owner: Amirhassan Charvadari (individual project)
-Last updated: 2026-11-13 (revision 7, 2026-11-15: deadline moved to 2026-11-27; P-011 approved as D-022; roadmap approved; M0 started)
+Last updated: 2026-11-18 (revision 11: D-024 extended with two masks and the population rule; I-14, I-15; revision 10: D-024 validation responsibilities; I-13 nullability conflict fixed; D-013 invalid labels made non-fatal)
 
 Status legend: DECIDED = approved by the owner. CANDIDATE = option that must be compared experimentally before a choice is made. PROPOSED = recommended, awaiting approval. ASSUMPTION = taken as true without proof, must be stated in the report. OPEN = unresolved.
 
@@ -110,6 +110,42 @@ This replaces the earlier proposal (train to t-1, validate on t), which is rejec
 A record is excluded from model training and from evaluation only if its `ArrDel15` value is missing or not in {0, 1}. The rule is based on the label, not on the Cancelled or Diverted flags. The number and proportion of excluded records are reported for every month.
 Evidence so far (3 months, section 3.3): every excluded record was a cancelled or diverted flight, and no diverted flight had a label, including diverted flights that reached their destination. This must be re-checked for all 84 months during ingestion.
 Excluded records are still part of the incoming batch for validation and volume monitoring.
+Amended 2026-11-18 by D-024: an invalid non-null label is excluded and reported at row level; it does not fail the batch.
+
+### D-023 Row-level quarantine in validation — DECIDED (2026-11-16)
+A single corrupt row must not reject a whole monthly batch. Rows whose feature values are out of range (for example a negative scheduled duration) or whose required feature columns are missing are quarantined: counted, reported per month, and excluded from use, like rows without a valid label (D-013). The batch fails only when the quarantined share exceeds 0.5%. Structural errors (missing columns, duplicate flights, rows outside the month) still fail the batch outright.
+- Alternatives considered: fail the whole batch on any violation (rejects 45.8M-row months for 1 bad row); silently drop bad rows (hides data-quality information). Quarantine with a threshold keeps the batch usable and the problem visible.
+- Observed in the real data: 16 quarantined rows across all 84 months, including a flight with CRSElapsedTime = -77 minutes (2020-01) and a flight with no flight number (2024-08).
+
+### D-024 Validation layer responsibilities and the training-row gate — DECIDED (2026-11-18)
+Each kind of problem is checked in exactly one layer.
+- Structural layer (can fail a batch): required columns present; dtype of every column (Pandera); Cancelled and Diverted contain only 0/1; no non-null FlightDate outside the batch month; no duplicate flights on the natural key; quarantined share not above 0.5%.
+- Row level (never fails a batch alone): quarantine of rows with a missing or out-of-range required feature (D-023); exclusion of rows whose ArrDel15 is missing or not in {0, 1} (D-013).
+Consequences:
+- Every column in REQUIRED_NOT_NULL is nullable in the Pandera schema; Pandera still checks its dtype. A missing FlightDate is quarantined; a non-null date in another month still fails the batch.
+- ArrDel15 has no value check in the schema. A non-null value outside {0, 1} is counted in excluded_rows and invalid_label_rows and produces a warning. This amends D-013, which previously failed the whole batch on such a value in practice, contrary to its own wording.
+- Cancelled and Diverted stay strict: they are not features, and a bad value there indicates a format problem.
+- A consistency test pins the policy: every REQUIRED_NOT_NULL column must be nullable, and the only strict columns are Cancelled and Diverted. Changing either requires changing that test deliberately.
+
+Where quarantine is applied: two masks (extended 2026-11-18 after owner review)
+- validate_month() only counts and reports. It does not remove rows, and the processed Parquet files keep every source row so that data stays traceable to the raw zip (verified: manifest and all 84 Parquet hashes unchanged after re-validation).
+- usable_features_mask(df) = not quarantined. The row's pre-departure features can be given to the model. It must never read Cancelled, Diverted or ArrDel15: whether a flight will be cancelled or late is unknown at prediction time, so filtering on these columns before scoring would be leakage. A test proves the mask is unchanged when those columns are altered or removed.
+- training_row_mask(df) = usable_features_mask AND valid label (D-013). It is always a subset of the feature mask.
+
+| Use | Mask |
+| --- | --- |
+| Training; validation and test (E1, E2, E4) | training_row_mask |
+| Labelled performance monitoring; shadow evaluation and promotion (D-012) | training_row_mask |
+| Target prevalence monitoring | training_row_mask (same population as the performance metric) |
+| Scoring a monthly batch with labels hidden | usable_features_mask |
+| Feature drift monitoring | usable_features_mask, for BOTH the reference and the current batch |
+| Volume and cancellation-rate monitoring | all rows |
+
+- Population rule: a drift reference and the batch it is compared with must be selected with the same mask. Otherwise the comparison measures the mask, not the data: for example a reference built from operated flights only, compared with all scheduled flights of 2020-04 (41.5% cancelled), would show drift that is caused by the cancellations alone.
+- Limitation to report: the model is trained on operated flights (training_row_mask) but scores all scheduled flights (usable_features_mask). Predictions for flights that are later cancelled or diverted can never be evaluated.
+- Requirement for M2 onward: every step that builds training, test or performance-monitoring data must use training_row_mask(); every scoring and drift step must use usable_features_mask(); each such step needs a test proving that excluded rows are absent from its output. Until M2 is implemented, no training data exists, so no row has been removed yet.
+- Validation report fields: usable_feature_rows (feature mask) and training_rows (training mask). The earlier field usable_rows (introduced in I-13) is replaced by training_rows with identical values.
+- Quarantined rows cannot be scored; how they are reported in the replay is OPEN (O-016).
 
 ### D-014 Design first, then measure — DECIDED (2026-11-15)
 Hardware does not limit the architecture, the model choice, the training strategy or the experimental scope in advance. The technically and scientifically appropriate design is defined first; its real resource use is then measured and optimised. The early benchmark (section 3.3) is information, not a constraint. If a strategy cannot be run after optimisation, this is reported as a measured result with numbers.
@@ -312,6 +348,16 @@ Source: image of the official project list in the Claude project files ("PROJECT
 - The report template (AIN4312) does not mention Docker, Kubernetes or Airflow.
 Reading: the three tools are given as examples ("like"). MLflow is already in the stack. An orchestrator and container deployment are named, so they cannot be dismissed as unnecessary without checking with the instructor (O-012). The earlier statement in this log that an orchestrator is "infrastructure without benefit" is withdrawn.
 
+### 3.6 M1 ingestion and validation of all 84 months (2026-11-16)
+
+- 84/84 months converted to Parquet (13 columns, compact dtypes): 45,763,492 rows, 288 MB total.
+- Manifest: data/manifest.csv — SHA-256, sizes, row counts, timestamps per month.
+- Validation report: data/validation_report.csv (copy in report/evidence/validation_report_2019_2025.csv).
+- Final statuses: 65 pass, 19 warn, 0 fail. Quarantined rows in total: 16.
+- Re-validated 2026-11-18 after I-13 (validation rules changed, data unchanged; manifest hash unchanged): 65 pass, 19 warn, 0 fail; identical counts in every month. Invalid non-null labels: 0. Rows usable by training_row_mask(): 44,666,163 of 45,763,492 (97.602%). 7 rows are both quarantined and label-excluded.
+- Re-validated again 2026-11-18 after I-14 and I-15 (data unchanged: manifest and 84 Parquet SHA-256 hashes verified): usable_feature_rows 45,763,476; training_rows 44,666,163. Compared with scripts/compare_validation_reports.py --strict against the report before I-13 (wording change normalised) and against the report after I-13: no differences in any shared column, 65 pass / 19 warn / 0 fail in both. Warnings: airline-set changes (EV, QX, YV, 9E), 15 quarantined rows, 5 unlabeled-but-not-cancelled rows.
+- Label exclusions (D-013): 1,097,320 rows = 2.40% of all rows, reported per month in the validation report.
+
 ### 3.5 M0 environment check (2026-11-15)
 
 Resolved by uv from `uv.lock` (108 packages), Python 3.12.15. Checked in the Linux VM on the owner's Mac (aarch64), not yet on native macOS.
@@ -332,15 +378,17 @@ Note: pandas 3 is a new major version; code must not rely on pandas 2 behaviour 
 - O-002 RESOLVED 2026-11-13 for a 12-month training window: sampling is not needed (section 3.3). Re-open only if a longer window is chosen.
 - O-003 Whether history-based features (for example past delay rate per airline) are used, and with what time lag.
 - O-004 Retraining and promotion thresholds.
-- O-005 Exact submission time on 2026-11-25 and submission format (date confirmed, D-021).
+- O-005 RESOLVED 2026-11-16: submission deadline 2026-11-27, 23:00 (11 PM) Türkiye time.
 - O-006 RESOLVED 2026-11-13: all 12 months of 2025 are on disk and pass the structural checks.
 - O-007 Drift reference window: how to separate seasonality from real drift (for example compare with the same month of the previous year).
 - O-008 Numerical tolerance for reproducibility (D-009).
 - O-009 RESOLVED 2026-11-15: Average Precision (D-016).
 - O-010 Training-window strategy: now C-001, decided by experiment E2.
 - O-011 Repeat the benchmark natively on macOS once the project environment exists.
-- O-012 Are Airflow and Kubernetes (named in the course brief as examples) expected by the instructor, or is an equivalent orchestrator and Docker-based serving acceptable? Owner to ask the instructor.
+- O-012 RESOLVED 2026-11-16 by the instructor: Airflow and Kubernetes are optional and count as a positive point, not a requirement. Priority is finishing the main part; they are added only if time remains. C-004 stays optional with this ruling.
 - O-014 Selection margin between model/window options (D-022). Must be fixed before the grid runs.
+- O-015 Native macOS test run and GitHub Actions status still unconfirmed by the owner (M0 exit criterion partially open).
+- O-016 How the replay scoring step reports quarantined rows that cannot be scored (count only, or also a separate volume-monitoring signal). Decide in M6.
 - O-013 Can the expanding window (up to 72 months, about 46 million rows) be trained within the available memory after optimisation? To be measured, not assumed.
 
 ## 5. Issue log (feeds report Section 7)
@@ -354,6 +402,11 @@ Note: pandas 3 is a new major version; code must not rely on pandas 2 behaviour 
 | I-05 | One month with all columns uses about 1.1 GB RAM | Data loading; 110 columns | Column-reduced Parquet planned (P-003) | Not yet measured |
 | I-08 | First promotion proposal validated the candidate on the trigger month | Design review; selection bias and unclear timing | Shadow evaluation on the following month adopted (D-012) | To be covered by a test in the implementation |
 | I-09 | An orchestrator was rejected before the course brief was read; the brief names Airflow and Kubernetes as example tools | Architecture; requirement missed | Brief recorded (section 3.4); orchestration reopened as C-004; question for instructor O-012 | Pending instructor answer |
+| I-11 | One flight with negative scheduled duration (2020-01), one with no flight number (2024-08), five rows per 84 months without label and without cancellation/diversion flag | Data quality in the source | Row-level quarantine with 0.5% threshold (D-023); label rule D-013 unchanged | 84/84 months validate without failure; 16 rows quarantined in total |
+| I-12 | Device connection dropped mid-run; one patch was lost and had to be re-applied | Tooling; Mac sleep or app closed | State checked before re-running; edits re-applied | Tests pass; 2024-08 revalidated |
+| I-13 | A null in Origin, Dest, CRSDepTime, CRSArrTime, Distance or FlightDate failed the whole batch instead of being quarantined; an ArrDel15 value outside {0, 1} also failed the whole batch instead of being excluded | Code review by the owner (failing test added for Origin). Cause: when fixing I-11 the schema was changed only for the observed column (flight number) instead of for every column in REQUIRED_NOT_NULL; no test checked the policy as a whole. The 28-day test fixture also produced a warning in every case, so "warn" assertions were weak | D-024: REQUIRED_NOT_NULL columns nullable in the schema (dtype still checked); missing FlightDate quarantined, non-null wrong-month date still fatal; ArrDel15 value check moved to row level with invalid_label_rows count and warning; training_row_mask() added as the single row gate; fixture now covers the full month; module docstring corrected | 34 tests pass, ruff clean. Parameterized test over all 8 REQUIRED_NOT_NULL columns, consistency test, invalid-label tests (2.0, -1.0, 0.5), structural tests (dtype, missing column, Cancelled flag, wrong month, quarantine threshold 0.5% boundary). Mutation check: re-introducing each bug in a copy of the code makes 3, 3 and 9 tests fail respectively. Re-validation of 84 Parquet files: statuses, counts and errors identical to before; only warning wording changed in 12 months (evidence: report/evidence/validation_report_2019_2025_before_I13.csv vs validation_report_2019_2025.csv) |
+| I-14 | A single training_row_mask() was used for every purpose, although scoring and feature-drift monitoring do not need a label; filtering the scoring batch with label-derived columns would also leak the outcome. Separately, the before/after comparison for I-13 was run as an inline script that was not saved | Owner review of I-13 | Two masks with a usage table and a population rule (D-024); test that the feature mask ignores Cancelled, Diverted and ArrDel15; comparison saved as scripts/compare_validation_reports.py with its own tests (dtype-safe numeric comparison, string comparison, wording normalisation, exit code) | 41 tests pass, ruff clean. Mutation check: a feature mask that drops cancelled flights makes 2 tests fail. Training-mask counts identical to the earlier usable_rows in all 84 months |
+| I-15 | After renaming a report field, the old column survived in validation_report.csv as NaN, because merging old and new reports with concat keeps the union of columns | Found by the new comparison script in --strict mode | merge_validation_report() keeps only the columns the current validator produces; unit test added | Re-validation: no stale column; comparison against both earlier reports shows no differences in shared columns |
 | I-10 | Ruff reported 5 errors, all in the benchmark scripts under report/evidence | M0 setup; evidence scripts were written before the lint rules | report/ excluded from ruff; scripts kept unchanged as evidence | ruff check passes |
 | I-06 | First draft of the promotion rule did not state that the candidate must be validated on data outside its training window | Design review | Chronological procedure defined (D-007, P-001) | To be covered by a test in the implementation |
 | I-07 | Monthly delay rate varies from 14% to 25% inside 2019 | Data inspection; seasonality | Prevalence change separated from feature drift (D-008) | Reference window still open (O-007) |
