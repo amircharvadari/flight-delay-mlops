@@ -221,22 +221,41 @@ def test_run_train_refuses_holdout_and_non_future_eval():
 def test_mlflow_round_trip(tmp_path):
     import mlflow
 
-    from flightdelay.tracking import log_run, setup_mlflow
+    from flightdelay.tracking import file_sha256, log_run, setup_mlflow
     train, batch = labelled_df(seed=11), labelled_df(seed=12)
     batch.loc[3, "Distance"] = None           # one unusable row -> NaN in output
     model = FlightDelayModel("lightgbm").fit_frame(train, {"train_from": "2019-01"})
     setup_mlflow("test_exp", tracking_uri=f"sqlite:///{tmp_path / 'mlflow.db'}",
                  artifact_root=tmp_path / "artifacts")
-    run_id = log_run(model, "test_run", {"fit_seconds": 1.0})
+    # Self-contained: the test brings its own manifest instead of relying on the
+    # developer's git-ignored data/manifest.csv (absent in CI, I-23).
+    manifest = tmp_path / "manifest.csv"
+    manifest.write_text("month,zip_sha256\n2019-01,abc\n")
+    run_id = log_run(model, "test_run", {"fit_seconds": 1.0}, manifest_path=manifest)
     run = mlflow.get_run(run_id)
     assert run.data.tags["model_type"] == "lightgbm"
-    assert "git_commit" in run.data.tags and "data_manifest_sha256" in run.data.tags
+    assert "git_commit" in run.data.tags
+    assert run.data.tags["data_manifest_sha256"] == file_sha256(manifest)
     assert run.data.params["hp_n_estimators"] == "300"
     loaded = mlflow.pyfunc.load_model(f"runs:/{run_id}/model")
     out = loaded.predict(batch)
     expected = model.predict_proba_all(batch)
     np.testing.assert_allclose(out["delay_probability"].to_numpy(), expected.to_numpy(), equal_nan=True)
     assert np.isnan(out["delay_probability"].iloc[3])
+
+
+@pytest.mark.filterwarnings("ignore:The ``noload`` loader strategy is deprecated")
+def test_missing_manifest_is_recorded_explicitly(tmp_path):
+    """I-23 regression: without a manifest the run must say so, not omit the tag."""
+    import mlflow
+
+    from flightdelay.tracking import MANIFEST_MISSING, log_run, setup_mlflow
+    model = FlightDelayModel("historical_rate").fit_frame(labelled_df(seed=14))
+    setup_mlflow("test_exp_missing", tracking_uri=f"sqlite:///{tmp_path / 'mlflow.db'}",
+                 artifact_root=tmp_path / "artifacts")
+    run_id = log_run(model, "no_manifest", {"fit_seconds": 1.0}, log_model=False,
+                     manifest_path=tmp_path / "does_not_exist.csv")
+    assert mlflow.get_run(run_id).data.tags["data_manifest_sha256"] == MANIFEST_MISSING
 
 
 def test_scoring_frame_used_for_prediction_matches_feature_contract():

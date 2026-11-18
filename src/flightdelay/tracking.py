@@ -28,6 +28,8 @@ from flightdelay.config import PROJECT_ROOT
 
 DEFAULT_TRACKING_URI = f"sqlite:///{PROJECT_ROOT / 'mlflow.db'}"
 DEFAULT_ARTIFACT_ROOT = PROJECT_ROOT / "mlartifacts"
+DEFAULT_MANIFEST = PROJECT_ROOT / "data" / "manifest.csv"
+MANIFEST_MISSING = "missing"
 
 
 def peak_rss_mb() -> float:
@@ -100,15 +102,20 @@ class FlightDelayPyfunc:
 
 
 def log_run(model, run_name: str, metrics: dict[str, float], extra: dict[str, Any] | None = None,
-            log_model: bool = True, config_paths: list[Path] | None = None) -> str:
-    """Log one trained model and its evaluation to the active MLflow experiment."""
+            log_model: bool = True, config_paths: list[Path] | None = None,
+            manifest_path: Path | None = None) -> str:
+    """Log one trained model and its evaluation to the active MLflow experiment.
+
+    The tag data_manifest_sha256 is always written: the SHA-256 of the data
+    manifest, or "missing" if the manifest file does not exist. A missing
+    manifest is therefore visible in the run instead of silently absent.
+    """
     import mlflow
 
     meta = {**model.metadata, **(extra or {})}
     tags = {**git_info(), **environment_info(), "model_type": model.model_type}
-    manifest = PROJECT_ROOT / "data" / "manifest.csv"
-    if manifest.exists():
-        tags["data_manifest_sha256"] = file_sha256(manifest)
+    manifest = Path(manifest_path or DEFAULT_MANIFEST)
+    tags["data_manifest_sha256"] = file_sha256(manifest) if manifest.exists() else MANIFEST_MISSING
     for p in config_paths or []:
         tags[f"config_sha256_{Path(p).stem}"] = file_sha256(p)
 
