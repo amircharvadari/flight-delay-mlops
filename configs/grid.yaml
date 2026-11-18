@@ -1,0 +1,22 @@
+# E1+E2 grid (D-022, D-033, D-034, D-035). Fixed before any grid run.
+experiment: E1E2_grid
+
+decision_points:          # training window ends at the decision point t; test month = t+1
+  first: "2022-01"
+  last: "2024-10"
+  step_months: 3          # -> 12 decision points
+
+windows: ["12", "24", "36", "expanding"]
+expanding_start: "2019-01"
+
+models: [historical_rate, logreg, lightgbm, xgboost]   # all four on every window (D-035)
+candidates: [lightgbm, xgboost]                        # only these can be selected (C-002)
+references: [historical_rate, logreg]                 # baseline acceptance check (D-036)
+
+selection:                # D-033 + D-035
+  metric: average_precision
+  ap_margin: 0.005               # options within 0.005 mean AP of the best are "equally good"
+  time_tie_tolerance: 0.10       # mean fit times within 10% of the fastest count as equal
+  memory_tie_tolerance: 0.10     # mean peak RSS within 10% of the smallest count as equal
+
+fit_timeout_seconds: 2700        # 45 min per fit (slowest benchmark fit: 23 min, O-021)

@@ -1,0 +1,95 @@
+{
+ "selected_model": "xgboost",
+ "selected_window": "12",
+ "best_mean_ap": 0.2922132813493503,
+ "selected_mean_ap": 0.2922132813493503,
+ "complete": false,
+ "is_decision": false,
+ "rule": {
+  "ap_margin": 0.005,
+  "time_tie_tolerance": 0.1,
+  "memory_tie_tolerance": 0.1
+ },
+ "acceptance": {
+  "outcome": "candidate_below_reference",
+  "statement": "No boosted candidate demonstrated an improvement over the reference: the selected candidate's mean AP is below the best reference.",
+  "references_complete": false,
+  "best_reference_model": "logreg",
+  "best_reference_window": "12",
+  "best_reference_mean_ap": 0.31576124453951127,
+  "candidate_minus_reference_ap": -0.023547963190160948,
+  "candidate_may_be_presented_as_superior": false,
+  "reference_table": [
+   {
+    "model": "logreg",
+    "window": "12",
+    "n_points": 2,
+    "mean_ap": 0.31576124453951127,
+    "std_ap": 0.0390994492013031,
+    "min_ap": 0.2881137588686109,
+    "mean_fit_seconds": 21.52498780199994,
+    "mean_peak_rss_mb": 2313.05,
+    "mean_roc_auc": 0.6405079532788633,
+    "mean_precision": 0.3458074046121352,
+    "mean_recall": 0.3169119009504414,
+    "mean_f1": 0.3307052233422686,
+    "points_won": 2.0
+   },
+   {
+    "model": "historical_rate",
+    "window": "12",
+    "n_points": 2,
+    "mean_ap": 0.30768701712119617,
+    "std_ap": 0.037214071232920275,
+    "min_ap": 0.281372694996839,
+    "mean_fit_seconds": 1.15447610550018,
+    "mean_peak_rss_mb": 1150.2,
+    "mean_roc_auc": 0.6391977502637033,
+    "mean_precision": 0.3367231955320958,
+    "mean_recall": 0.3096288359423708,
+    "mean_f1": 0.32258003735302787,
+    "points_won": 0.0
+   }
+  ]
+ },
+ "table": [
+  {
+   "model": "xgboost",
+   "window": "12",
+   "n_points": 2,
+   "mean_ap": 0.2922132813493503,
+   "std_ap": 0.023090008061673786,
+   "min_ap": 0.27588618007128873,
+   "mean_fit_seconds": 64.46229786399999,
+   "mean_peak_rss_mb": 1425.15,
+   "mean_roc_auc": 0.6218144698019159,
+   "mean_precision": 0.31993142816661285,
+   "mean_recall": 0.2977723719785099,
+   "mean_f1": 0.30844850767806753,
+   "points_won": 2.0,
+   "eligible": true,
+   "time_tied": true,
+   "memory_tied": true,
+   "selected": true
+  },
+  {
+   "model": "lightgbm",
+   "window": "12",
+   "n_points": 2,
+   "mean_ap": 0.28575885617138297,
+   "std_ap": 0.02485031927494965,
+   "min_ap": 0.2681870268974153,
+   "mean_fit_seconds": 49.55511323200017,
+   "mean_peak_rss_mb": 1088.0,
+   "mean_roc_auc": 0.6163937980396721,
+   "mean_precision": 0.3140375791796821,
+   "mean_recall": 0.2923603714564318,
+   "mean_f1": 0.30280649648480806,
+   "points_won": 0.0,
+   "eligible": false,
+   "time_tied": false,
+   "memory_tied": false,
+   "selected": false
+  }
+ ]
+}
