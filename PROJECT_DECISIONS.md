@@ -3,7 +3,7 @@
 Project: MLOps Pipeline for Flight Delay Prediction using BTS On-Time Performance Data
 Course: AIN4312 Special Topics in Artificial Intelligence Engineering (2026/27), Bahcesehir University
 Owner: Amirhassan Charvadari (individual project)
-Last updated: 2026-11-18 (revision 24: D-036 middle-zone interpretation approved by the owner; revision 23: D-036 baseline acceptance check and E3 implications, O-022 resolved; revision 22: D-035 grid execution, M4 mini grid, O-022; revision 21: I-23 CI failure fixed; revision 20: P-012 approved as D-034 with owner clarifications, O-020 resolved; revision 19: D-033 selection margin, P-012 alert-threshold proposal for O-020; revision 18: M3 closed on native macOS, O-013 resolved, O-021; revision 17: M3 implementation, D-031 baseline formula, D-032 model wrapper and tracking, O-018 guard implemented, I-21, I-22, O-020; revision 16: D-030 resolves O-019 and revises D-023; re-validation of 84 months; revision 15: P-005 approved as D-029, D-028 implausible durations, O-017 resolved, O-018, O-019, I-20; revision 14: D-026 model-specific categorical handling, D-027 scheduled duration source, O-017, I-18, I-19; revision 13: M2 feature contract D-025, P-005 implemented pending approval, I-16, I-17; revision 12: O-015 resolved, M0 and M1 closed; revision 11: D-024 extended with two masks and the population rule; I-14, I-15; revision 10: D-024 validation responsibilities; I-13 nullability conflict fixed; D-013 invalid labels made non-fatal)
+Last updated: 2026-11-18 (revision 25: E1+E2 full grid results (3.14), O-023 E3 champion; revision 24: D-036 middle-zone interpretation approved by the owner; revision 23: D-036 baseline acceptance check and E3 implications, O-022 resolved; revision 22: D-035 grid execution, M4 mini grid, O-022; revision 21: I-23 CI failure fixed; revision 20: P-012 approved as D-034 with owner clarifications, O-020 resolved; revision 19: D-033 selection margin, P-012 alert-threshold proposal for O-020; revision 18: M3 closed on native macOS, O-013 resolved, O-021; revision 17: M3 implementation, D-031 baseline formula, D-032 model wrapper and tracking, O-018 guard implemented, I-21, I-22, O-020; revision 16: D-030 resolves O-019 and revises D-023; re-validation of 84 months; revision 15: P-005 approved as D-029, D-028 implausible durations, O-017 resolved, O-018, O-019, I-20; revision 14: D-026 model-specific categorical handling, D-027 scheduled duration source, O-017, I-18, I-19; revision 13: M2 feature contract D-025, P-005 implemented pending approval, I-16, I-17; revision 12: O-015 resolved, M0 and M1 closed; revision 11: D-024 extended with two masks and the population rule; I-14, I-15; revision 10: D-024 validation responsibilities; I-13 nullability conflict fixed; D-013 invalid labels made non-fatal)
 
 Status legend: DECIDED = approved by the owner. CANDIDATE = option that must be compared experimentally before a choice is made. PROPOSED = recommended, awaiting approval. ASSUMPTION = taken as true without proof, must be stated in the report. OPEN = unresolved.
 
@@ -532,6 +532,20 @@ Reading: the three tools are given as examples ("like"). MLflow is already in th
 - Re-validated again 2026-11-18 after I-14 and I-15 (data unchanged: manifest and 84 Parquet SHA-256 hashes verified): usable_feature_rows 45,763,476; training_rows 44,666,163. Compared with scripts/compare_validation_reports.py --strict against the report before I-13 (wording change normalised) and against the report after I-13: no differences in any shared column, 65 pass / 19 warn / 0 fail in both. Warnings: airline-set changes (EV, QX, YV, 9E), 15 quarantined rows, 5 unlabeled-but-not-cancelled rows.
 - Label exclusions (D-013): 1,097,320 rows = 2.40% of all rows, reported per month in the validation report.
 
+### 3.14 E1+E2 full grid on native macOS (run by the owner, 2026-11-18/19)
+
+Run: 192 fits, all status ok, commit 64c93f4, git_dirty = false for every fit. Integrity re-checked 2026-11-19 in the VM: identity.json equals the current tree (code, config and manifest hashes, fit keys), all 192 prediction files match their recorded hashes, no LightGBM duration fill (O-018 guard never needed). Maximum single fit 1,617 s, maximum peak RSS 4,667 MB. Evidence: report/evidence/e1e2_grid_selection.json, e1e2_grid_results.csv, e1e2_grid_identity.json.
+Selection (D-035), complete = true, is_decision = true:
+- best candidate xgboost/12, mean AP 0.3095; eligible within 0.005: xgboost/12 and lightgbm/12 only.
+- lightgbm/12 is faster (45.7 s vs 62.2 s mean fit, outside the 10% time tie) and is selected: mean AP 0.3081 (std 0.072, min 0.201).
+- other candidates: xgboost/36 0.3043, xgboost/expanding 0.3043, lightgbm/36 0.3039, xgboost/24 0.3035, lightgbm/expanding 0.3033, lightgbm/24 0.3028.
+Acceptance check (D-036): best reference logreg/12, mean AP 0.3042; difference +0.0040 < 0.005 -> improvement_not_demonstrated; the candidate may not be presented as superior. historical_rate/12: 0.3036 at mean fit 1.1 s.
+Observations (measured, not interpreted beyond this):
+- For every model the 12-month window has the highest mean AP; longer windows cost more time and memory without higher mean AP.
+- The spread of AP across the 12 test months (std about 0.065-0.072) is much larger than the spread between the best options (about 0.006).
+- Mean P/R/F1 at the D-034 threshold are close for the 12-month options (F1 0.332-0.335).
+- No paired statistical analysis yet (separate, D-036).
+
 ### 3.13 M4 mini grid in the VM (2026-11-18)
 
 Scope: 2 decision points (2022-01, 2022-04) x 12-month window x 4 models = 8 fits; experiment M4_mini_grid; uncommitted code (--allow-dirty, all results git_dirty = True), so this is a mechanics check, not decision evidence. Evidence: report/evidence/m4_mini_grid_results.csv, m4_mini_grid_selection_mechanics_only.json.
@@ -654,6 +668,7 @@ Note: pandas 3 is a new major version; code must not rely on pandas 2 behaviour 
 - O-019 RESOLVED 2026-11-18 by D-030: out-of-range durations no longer quarantine the row.
 - O-021 XGBoost needs about four times more time per million rows on the 70-month expanding window than on 12-36-month windows (1,402 s vs about 185 s for 36 months), while LightGBM scales linearly. Possible causes (not measured): memory pressure or memory compression on the 8.6 GB Mac, or XGBoost's categorical split search on more rows. Matters for grid runtime, not for correctness; M4 should log per-fit time and resume after interruption.
 - O-020 RESOLVED 2026-11-18 by D-034 (batch-level evaluation threshold). API threshold policy deferred to M5.
+- O-023 E3 champion (owner decision required, D-036): the acceptance outcome of the full grid is improvement_not_demonstrated (lightgbm/12 0.3081 vs logreg/12 0.3042). Options: lightgbm/12, logreg/12, historical_rate/12. Window 12 months is the measured best for every model (C-001).
 - O-022 RESOLVED 2026-11-18 by D-036 (owner: no tuning, configuration unchanged, explicit baseline acceptance check). Original observation (diagnostic only): at both mini-grid points the references had higher AP than both candidates (2022-02: logreg 0.288, historical_rate 0.281, xgboost 0.276, lightgbm 0.268; 2022-05: logreg 0.343, historical_rate 0.334, xgboost 0.309, lightgbm 0.303); in the M3 exit run (tested on 2022-01) the order was reversed.
 - O-013 RESOLVED 2026-11-18 (section 3.12): the expanding window (70 months, 36.6 million training rows) trains for all four models on the 8.6 GB Mac; peak memory 4.06 to 4.23 GB.
 
