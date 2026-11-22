@@ -1,0 +1,28 @@
+# Monitoring, retraining, promotion and rollback (M6). Fixed before E3
+# (D-040 to D-044); not changed because of replay or 2025 results.
+
+trigger:                 # D-040: the only automatic retraining trigger
+  metric: roc_auc
+  delta: 0.03            # AUC(t) < baseline - delta
+promotion:               # D-041: shadow month, same rows
+  metric: average_precision
+  margin: 0.005
+rollback:                # D-042: previous model in shadow for one month
+  metric: average_precision
+  margin: 0.005
+  watch_months: 1
+
+feature_drift:           # D-043: signal only
+  numeric_bins: 10       # quantile bins of the reference month
+  psi_floor: 0.0001      # empty-bin floor for the logarithm
+  warning: 0.10
+  alert: 0.25
+  features: [day_of_week, day_of_month, dep_hour, dep_minute_of_day, arr_hour,
+             arr_minute_of_day, crs_elapsed_time, distance, airline, origin, dest]
+prevalence:              # D-043: signal only
+  alert_abs_diff: 0.05   # vs the same month one year earlier
+
+policies: [never_retrained, triggered, scheduled]   # D-044
+replay:
+  initial_train: ["2019-01", "2019-12"]
+  months: ["2020-01", "2024-12"]

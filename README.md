@@ -52,3 +52,18 @@ make smoke
 ```
 
 Request: `POST /predict` with `{"flights": [{"flight_date": "2024-12-20", "reporting_airline": "DL", "origin": "ATL", "dest": "LAX", "crs_dep_time": 1730, "crs_arr_time": 1915, "crs_elapsed_time": 285, "distance": 1946}]}`. Only pre-departure fields are accepted; any other field is rejected with HTTP 422.
+
+## Monitoring, retraining and rollback (M6)
+
+Thresholds are fixed in `configs/monitoring.yaml` (D-040 to D-044):
+
+- retraining trigger: AUC of the serving model < its baseline AUC - 0.03 (AUC does not depend on the delay rate, so seasonal prevalence changes do not trigger retraining);
+- promotion: candidate AP >= serving AP + 0.005 on its shadow month (same rows);
+- rollback: previous model AP >= new model AP + 0.005 in the first month after a promotion;
+- signals only: feature drift (PSI against the same calendar month in the model's training window), prevalence vs the same month a year earlier, volume and unscorable rows.
+
+```bash
+uv run python -m flightdelay.registry status            # aliases champion / previous / challenger
+uv run python -m flightdelay.registry rollback          # champion <-> previous, rebuild the bundle
+uv run python -m flightdelay.registry promote --version N
+```

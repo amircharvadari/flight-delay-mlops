@@ -45,16 +45,16 @@ from flightdelay.training import guard_holdout, load_training_window, month_path
 
 
 def register_champion(run_id: str, name: str, alias: str, tags: dict[str, str]) -> str:
-    """Register the run's model as a new version and point the alias at it."""
-    import mlflow
-    from mlflow import MlflowClient
+    """Register the run's model as a new version and make it the champion.
 
-    mv = mlflow.register_model(f"runs:/{run_id}/model", name)
-    client = MlflowClient()
-    for k, v in tags.items():
-        client.set_model_version_tag(name, mv.version, k, v)
-    client.set_registered_model_alias(name, alias, mv.version)
-    return str(mv.version)
+    The former champion becomes "previous" (rollback target, D-042)."""
+    from flightdelay.registry import CHAMPION, promote, register_version
+
+    if alias != CHAMPION:
+        raise ValueError(f"serving alias must be {CHAMPION!r}")
+    version = register_version(run_id, name, tags)
+    promote(name, version)
+    return version
 
 
 def download_alias(name: str, alias: str, dst: Path) -> Path:
@@ -100,7 +100,9 @@ def main(argv: list[str] | None = None) -> int:
                      {"threshold_month": thr_month, "champion_decision": champ["decision"]},
                      config_paths=[PROJECT_ROOT / "configs" / "base.yaml", MODELS_CONFIG,
                                    SERVING_CONFIG])
+    from flightdelay.registry import threshold_tags
     version = register_champion(run_id, scfg["registered_model_name"], scfg["champion_alias"], {
+        **threshold_tags(threshold),
         "decision": champ["decision"],
         "acceptance_outcome": champ["acceptance_outcome"],
         "rationale": "operational efficiency under D-035; not demonstrated predictive superiority",

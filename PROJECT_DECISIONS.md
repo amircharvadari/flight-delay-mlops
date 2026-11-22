@@ -3,7 +3,7 @@
 Project: MLOps Pipeline for Flight Delay Prediction using BTS On-Time Performance Data
 Course: AIN4312 Special Topics in Artificial Intelligence Engineering (2026/27), Bahcesehir University
 Owner: Amirhassan Charvadari (individual project)
-Last updated: 2026-11-22 (revision 28: I-24 container permission fix; export reproduced the grid fit exactly; revision 27: P-013 approved as D-038, P-014 approved as D-039, O-020 fully resolved; revision 26: D-037 E3 champion, O-023 resolved, M5 serving implemented, P-013 and P-014 proposed (approved in revision 27); revision 25: E1+E2 full grid results (3.14), O-023 E3 champion; revision 24: D-036 middle-zone interpretation approved by the owner; revision 23: D-036 baseline acceptance check and E3 implications, O-022 resolved; revision 22: D-035 grid execution, M4 mini grid, O-022; revision 21: I-23 CI failure fixed; revision 20: P-012 approved as D-034 with owner clarifications, O-020 resolved; revision 19: D-033 selection margin, P-012 alert-threshold proposal for O-020; revision 18: M3 closed on native macOS, O-013 resolved, O-021; revision 17: M3 implementation, D-031 baseline formula, D-032 model wrapper and tracking, O-018 guard implemented, I-21, I-22, O-020; revision 16: D-030 resolves O-019 and revises D-023; re-validation of 84 months; revision 15: P-005 approved as D-029, D-028 implausible durations, O-017 resolved, O-018, O-019, I-20; revision 14: D-026 model-specific categorical handling, D-027 scheduled duration source, O-017, I-18, I-19; revision 13: M2 feature contract D-025, P-005 implemented pending approval, I-16, I-17; revision 12: O-015 resolved, M0 and M1 closed; revision 11: D-024 extended with two masks and the population rule; I-14, I-15; revision 10: D-024 validation responsibilities; I-13 nullability conflict fixed; D-013 invalid labels made non-fatal)
+Last updated: 2026-11-22 (revision 30: M6 implementation and checks (3.16); revision 29: M6 design D-040 to D-044 approved; O-004, O-007, O-016 resolved; revision 28: I-24 container permission fix; export reproduced the grid fit exactly; revision 27: P-013 approved as D-038, P-014 approved as D-039, O-020 fully resolved; revision 26: D-037 E3 champion, O-023 resolved, M5 serving implemented, P-013 and P-014 proposed (approved in revision 27); revision 25: E1+E2 full grid results (3.14), O-023 E3 champion; revision 24: D-036 middle-zone interpretation approved by the owner; revision 23: D-036 baseline acceptance check and E3 implications, O-022 resolved; revision 22: D-035 grid execution, M4 mini grid, O-022; revision 21: I-23 CI failure fixed; revision 20: P-012 approved as D-034 with owner clarifications, O-020 resolved; revision 19: D-033 selection margin, P-012 alert-threshold proposal for O-020; revision 18: M3 closed on native macOS, O-013 resolved, O-021; revision 17: M3 implementation, D-031 baseline formula, D-032 model wrapper and tracking, O-018 guard implemented, I-21, I-22, O-020; revision 16: D-030 resolves O-019 and revises D-023; re-validation of 84 months; revision 15: P-005 approved as D-029, D-028 implausible durations, O-017 resolved, O-018, O-019, I-20; revision 14: D-026 model-specific categorical handling, D-027 scheduled duration source, O-017, I-18, I-19; revision 13: M2 feature contract D-025, P-005 implemented pending approval, I-16, I-17; revision 12: O-015 resolved, M0 and M1 closed; revision 11: D-024 extended with two masks and the population rule; I-14, I-15; revision 10: D-024 validation responsibilities; I-13 nullability conflict fixed; D-013 invalid labels made non-fatal)
 
 Status legend: DECIDED = approved by the owner. CANDIDATE = option that must be compared experimentally before a choice is made. PROPOSED = recommended, awaiting approval. ASSUMPTION = taken as true without proof, must be stated in the report. OPEN = unresolved.
 
@@ -317,6 +317,34 @@ Implications for E3 (retraining replay, M7) and later:
 - The D-036 acceptance outcome stays explicit in all documentation and in the final report: improvement_not_demonstrated (lightgbm/12 mean AP 0.3081 vs best reference logreg/12 0.3042, difference +0.0040 < 0.005). The paired statistical analysis is separate.
 - Recorded in configs/serving.yaml (champion block) and as tags on every registered champion model version (decision, acceptance_outcome, rationale).
 
+### D-040 Retraining trigger — DECIDED (2026-11-22, resolves O-004 for the trigger)
+- Trigger metric: ROC AUC of the serving model on the labelled rows of month t. Rule: AUC(t) < baseline AUC - 0.03.
+- Baseline AUC: the model's AUC on its own shadow month (for a promoted model: month t+1 of D-012; for the initial 2019 model: its first scored month, 2020-01).
+- Reason: in the E1+E2 grid (lightgbm/12, 12 test months) the correlation between AP and prevalence was 0.94, so an AP trigger would fire on seasonal prevalence changes, which D-008 forbids. AUC is rank-based and does not depend on class balance (correlation with prevalence 0.59; harder months remain). AP stays the evaluation and promotion metric (D-016).
+- delta = 0.03: about one standard deviation of AUC across the 12 grid test months (0.033), from the development period, fixed before E3. Single month, no consecutive-month rule; a two-month rule may be reported as a sensitivity run only.
+- No trigger is evaluated while a candidate is in shadow mode or in the month a model change is decided.
+
+### D-041 Promotion rule — DECIDED (2026-11-22, resolves O-004 for promotion)
+A candidate is promoted only if, on its shadow month t+1 and on the same rows, AP(candidate) >= AP(current) + 0.005 (same margin as D-033). AP is fair here because both models are scored on identical rows with identical prevalence. Otherwise the candidate is discarded. On promotion its alert threshold is frozen on its shadow-month scores (D-038) and its baseline AUC is its shadow-month AUC (D-040).
+
+### D-042 Rollback — DECIDED (2026-11-22)
+- For one month after a promotion (month t+2, the first month the new model serves), the previous model also scores the batch in shadow mode. If AP(previous) >= AP(new) + 0.005 on the same rows, the decision is a rollback: the previous model serves again from the next month with its earlier baseline and threshold.
+- Model registry: aliases champion (serving), challenger (candidate in shadow), previous (the model before the last promotion). Promotion and rollback move aliases and rebuild the serving bundle; the image is unchanged (D-039).
+
+### D-043 Monitoring signals and reference windows — DECIDED (2026-11-22, resolves O-007 and O-016)
+Signals (D-008), computed per batch on the populations of D-024:
+- Feature drift (signal only): PSI per feature on usable rows. Reference = the same calendar month inside the serving model's own training window (a 12-month window contains exactly one of each month), which removes the seasonal pattern (O-007). The PSI against the whole training window is also reported. Levels: warning 0.10, alert 0.25 (common industry convention; source to be verified before it is cited). Plus the share of rows with an airline, origin or destination not in the model's vocabulary.
+- Prevalence (signal only): prevalence of month t vs the same month one year earlier; alert if the absolute difference > 0.05. The share of scored rows that have a label is reported (cancellation waves).
+- Concept drift (inferred, D-008): if the D-040 trigger fires and no feature has PSI >= 0.25, the month is reported as suspected concept drift; otherwise as degradation with feature drift.
+- Volume and quality (O-016): per batch the number and share of rows that cannot be scored (quarantined) and the flight volume relative to the same month one year earlier. Reported only.
+None of these signals triggers retraining (D-012).
+
+### D-044 Policies compared in E3 — DECIDED (2026-11-22)
+- A never retrained: the initial model (lightgbm, trained 2019-01 to 2019-12) serves the whole replay 2020-01 to 2024-12.
+- B triggered: D-012 sequence with the D-040 trigger, D-041 promotion and D-042 rollback.
+- C scheduled: the same D-012 sequence, but a candidate is trained after every month in which no candidate is in shadow mode (trigger always true); promotion and rollback rules as in B. Reference point for freshness versus training cost.
+All policies use the champion configuration (D-037: lightgbm, rolling 12-month window, unchanged hyperparameters). 2025 stays locked (D-020): no policy, threshold or signal touches 2025 before E4.
+
 ### D-014 Design first, then measure — DECIDED (2026-11-15)
 Hardware does not limit the architecture, the model choice, the training strategy or the experimental scope in advance. The technically and scientifically appropriate design is defined first; its real resource use is then measured and optimised. The early benchmark (section 3.3) is information, not a constraint. If a strategy cannot be run after optimisation, this is reported as a measured result with numbers.
 
@@ -554,6 +582,13 @@ Reading: the three tools are given as examples ("like"). MLflow is already in th
 - Re-validated again 2026-11-18 after I-14 and I-15 (data unchanged: manifest and 84 Parquet SHA-256 hashes verified): usable_feature_rows 45,763,476; training_rows 44,666,163. Compared with scripts/compare_validation_reports.py --strict against the report before I-13 (wording change normalised) and against the report after I-13: no differences in any shared column, 65 pass / 19 warn / 0 fail in both. Warnings: airline-set changes (EV, QX, YV, 9E), 15 quarantined rows, 5 unlabeled-but-not-cancelled rows.
 - Label exclusions (D-013): 1,097,320 rows = 2.40% of all rows, reported per month in the validation report.
 
+### 3.16 M6 monitoring, policy and registry in the VM (2026-11-22, uncommitted code)
+- Thresholds written to configs/monitoring.yaml before any replay run (D-040 to D-044).
+- Modules: monitoring.py (PSI with quantile bins of the reference month, categorical shares with a missing/unseen bin, prevalence, volume and quality, concept-drift inference), policy.py (pure monthly decision function for the three policies, D-012 order, end-of-replay guard, time-order checker), registry.py (aliases champion/challenger/previous, promotion, rollback, bundle rebuild from the registry with the frozen threshold stored as model-version tags; CLI). run_export now records the threshold tags and moves the former champion to "previous".
+- Tests: 231 passed (37 new): PSI hand value and levels, same-calendar-month reference, signals, a synthetic prevalence shift that lowers AP by more than 0.10 while AUC stays within 0.005 and the D-040 trigger does not fire, trigger boundary (AUC = baseline - 0.03 does not fire), promotion and rollback boundaries (exactly + 0.005 promotes / rolls back), no trigger in a change month, candidate window t-11..t and shadow t+1, promoted model serves from t+2, holdout refusal and end-of-replay skip, random 60-month simulations for all policies in which no model ever scores a month inside or before its training window, checker rejects constructed violations; registry promote/rollback round trip with identical predictions and thresholds.
+- Sanity check on real data (thresholds already fixed; 2019 vocabulary, reference = same month of 2019): 2020-01 max PSI 0.016, prevalence 0.137 vs 0.186, volume x1.04; 2020-04 max PSI 0.146 (airline, warning), prevalence 0.049 vs 0.182 (alert), volume x0.51, labelled share of scored rows 0.584 (cancellations); 2021-04 max PSI 0.239 (airline, warning), unseen-category share 0.023. Feature drift and prevalence change are separated as D-008 requires.
+- Pending on native macOS after commit: backfill the threshold tags of registered version 1 (registry tag-from-bundle) so that rollback can rebuild its bundle.
+
 ### 3.15 M5 serving in the VM (2026-11-21, uncommitted code)
 - Tests: 189 passed (27 new in tests/test_serving.py: bundle round trip, frozen threshold rule, incomplete/tampered bundle refused, app refuses to start without a bundle, registry versions and alias, API metadata, no training-serving skew, unseen category, duration reporting, outcome fields rejected, invalid values, batch limits, accepted requests are usable rows); ruff clean.
 - Mechanics check on real data (not the champion): LightGBM trained on 2024-10 only, bundle written, threshold frozen on 2024-11 (tau 0.2233 = the D-034 batch tau of the same month, k 75,971); uvicorn started from the bundle; scripts/api_smoke.py: health, model, predict and rejection of an outcome field all passed.
@@ -680,10 +715,10 @@ Note: pandas 3 is a new major version; code must not rely on pandas 2 behaviour 
 - O-001 RESOLVED 2026-11-13: see D-011.
 - O-002 RESOLVED 2026-11-13 for a 12-month training window: sampling is not needed (section 3.3). Re-open only if a longer window is chosen.
 - O-003 Whether history-based features (for example past delay rate per airline) are used, and with what time lag.
-- O-004 Retraining and promotion thresholds.
+- O-004 RESOLVED 2026-11-22 by D-040 (trigger) and D-041 (promotion). Original: Retraining and promotion thresholds.
 - O-005 RESOLVED 2026-11-16: submission deadline 2026-11-27, 23:00 (11 PM) Türkiye time.
 - O-006 RESOLVED 2026-11-13: all 12 months of 2025 are on disk and pass the structural checks.
-- O-007 Drift reference window: how to separate seasonality from real drift (for example compare with the same month of the previous year).
+- O-007 RESOLVED 2026-11-22 by D-043 (same calendar month in the model's training window). Original: Drift reference window: how to separate seasonality from real drift (for example compare with the same month of the previous year).
 - O-008 Numerical tolerance for reproducibility (D-009).
 - O-009 RESOLVED 2026-11-15: Average Precision (D-016).
 - O-010 Training-window strategy: now C-001, decided by experiment E2.
@@ -691,7 +726,7 @@ Note: pandas 3 is a new major version; code must not rely on pandas 2 behaviour 
 - O-012 RESOLVED 2026-11-16 by the instructor: Airflow and Kubernetes are optional and count as a positive point, not a requirement. Priority is finishing the main part; they are added only if time remains. C-004 stays optional with this ruling.
 - O-014 RESOLVED 2026-11-18 by D-033: margin 0.005 AP.
 - O-015 RESOLVED 2026-11-18 (confirmed by the owner): native macOS `uv run pytest -q` -> 41 passed in 7.06 s; `uv run ruff check .` -> all checks passed; GitHub Actions CI run #2 for commit d6e4ef3 completed successfully in 27 s. M0 exit criterion met. Commit d6e4ef3 verified in the local repository by the assistant; the CI result itself was not visible to the assistant.
-- O-016 How the replay scoring step reports quarantined rows that cannot be scored (count only, or also a separate volume-monitoring signal). Decide in M6.
+- O-016 RESOLVED 2026-11-22 by D-043 (count, share and volume, reported only). Original: How the replay scoring step reports quarantined rows that cannot be scored (count only, or also a separate volume-monitoring signal). Decide in M6.
 - O-017 RESOLVED 2026-11-18 by D-028: implausible durations are set to missing; the row is kept.
 - O-018 RESOLVED 2026-11-18 by D-032: guard implemented and tested (median fill for LightGBM when the training window has no missing durations, recorded in model metadata).
 - O-019 RESOLVED 2026-11-18 by D-030: out-of-range durations no longer quarantine the row.
