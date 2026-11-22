@@ -58,6 +58,15 @@ def test_bundle_round_trip_gives_identical_scores(model, bundle_dir):
     assert b.threshold == b.meta["threshold"]["tau"]
 
 
+def test_bundle_is_readable_by_any_user(bundle_dir):
+    """I-24: the bundle is mounted into a container that runs as a non-root user."""
+    paths = [bundle_dir, *bundle_dir.rglob("*")]
+    assert (bundle_dir / "serving.json") in paths
+    for p in paths:
+        mode = p.stat().st_mode & 0o777
+        assert mode == (0o755 if p.is_dir() else 0o644), (p, oct(mode))
+
+
 def test_frozen_threshold_is_the_d034_rule(model):
     scores = np.array([0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.05])
     thr = frozen_threshold(model, scores, "2019-02")

@@ -100,6 +100,7 @@ def write_bundle(model, out_dir: Path, threshold: dict[str, Any], provenance: di
         **provenance,
     }
     atomic_write_json(tmp / "serving.json", meta)  # last: marks the bundle complete
+    make_world_readable(tmp)
     old = out_dir.with_name(out_dir.name + ".old")
     shutil.rmtree(old, ignore_errors=True)
     if out_dir.exists():
@@ -107,6 +108,15 @@ def write_bundle(model, out_dir: Path, threshold: dict[str, Any], provenance: di
     tmp.rename(out_dir)
     shutil.rmtree(old, ignore_errors=True)
     return out_dir
+
+
+def make_world_readable(root: Path) -> None:
+    """Directories 0755, files 0644 (I-24). The bundle holds no secrets and must be
+    readable by the non-root user of the serving container when it is mounted.
+    Temporary-file writes (mkstemp) would otherwise leave serving.json at 0600."""
+    root.chmod(0o755)
+    for p in root.rglob("*"):
+        p.chmod(0o755 if p.is_dir() else 0o644)
 
 
 @dataclass

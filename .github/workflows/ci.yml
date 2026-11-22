@@ -16,3 +16,37 @@ jobs:
         run: uv run ruff check .
       - name: Tests
         run: uv run pytest -q
+
+  docker:
+    # Regression test for I-24: build the serving image from a checkout whose
+    # source files have owner-only modes (as seen on the owner's Mac), start the
+    # container as its non-root user with a mounted bundle, and run the smoke test.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Install dependencies from the lock file
+        run: uv sync --locked
+      - name: Make source and config files owner-only (reproduces I-24)
+        run: chmod -R go-rwx src configs
+      - name: Build the image
+        run: docker build -t flightdelay-api:ci .
+      - name: Write a synthetic serving bundle
+        run: uv run python scripts/make_test_bundle.py "$RUNNER_TEMP/bundle"
+      - name: Start the container
+        run: |
+          docker run -d --name api -p 8000:8000 \
+            -v "$RUNNER_TEMP/bundle:/app/serving:ro" flightdelay-api:ci
+          for i in $(seq 1 60); do
+            curl -fs http://127.0.0.1:8000/health && exit 0
+            sleep 2
+          done
+          docker logs api
+          exit 1
+      - name: Smoke test
+        run: uv run python scripts/api_smoke.py
+      - name: Container user is not root
+        run: test "$(docker exec api id -u)" != "0"
+      - name: Container logs
+        if: always()
+        run: docker logs api || true

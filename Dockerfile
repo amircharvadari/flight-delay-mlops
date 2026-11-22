@@ -22,7 +22,12 @@ RUN uv sync --locked --no-dev --no-install-project
 
 COPY src ./src
 COPY configs ./configs
-RUN uv sync --locked --no-dev
+# COPY keeps the file modes of the build context. On a checkout with owner-only
+# modes (0600/0700) the root-owned copies would be unreadable for the non-root
+# user below (I-24). Normalise: root keeps ownership, everyone may read and
+# traverse, nobody but root may write, so the service cannot modify its code.
+RUN chmod -R u=rwX,go=rX /app/src /app/configs \
+    && uv sync --locked --no-dev
 
 RUN useradd --create-home --uid 10001 app
 USER app
