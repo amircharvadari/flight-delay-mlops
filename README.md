@@ -67,3 +67,13 @@ uv run python -m flightdelay.registry status            # aliases champion / pre
 uv run python -m flightdelay.registry rollback          # champion <-> previous, rebuild the bundle
 uv run python -m flightdelay.registry promote --version N
 ```
+
+## E3 replay (M7)
+
+Replays 2020-01 to 2024-12 month by month for three policies (D-044): never retrained, retraining on the AUC trigger, and scheduled monthly retraining, each with shadow evaluation, promotion and rollback (D-012, D-040 to D-042). The 2025 holdout is never touched.
+
+```bash
+caffeinate -i uv run python -m flightdelay.run_replay --out-dir data/replay/E3   # resumable
+```
+
+Outputs in `data/replay/E3/policies/<policy>/`: `monthly.csv` (performance, frozen-threshold alerts, drift, prevalence and volume signals, events), `events.json`, `summary.json`; cross-policy comparison in `comparison.json`; one MLflow run per policy (experiment `E3_replay`).
