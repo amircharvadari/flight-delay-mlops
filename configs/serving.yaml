@@ -1,0 +1,28 @@
+# Serving configuration (M5). Does not change the approved model configuration:
+# model hyperparameters stay in configs/models.yaml.
+
+# E3 champion (D-037, owner decision 2026-11-21). Chosen for operational
+# efficiency under the D-035 cheaper-option rule, NOT for demonstrated
+# predictive superiority: the D-036 acceptance outcome is
+# improvement_not_demonstrated (lightgbm/12 0.3081 vs logreg/12 0.3042 mean AP).
+champion:
+  model: lightgbm
+  window_months: 12
+  decision: D-037
+  acceptance_outcome: improvement_not_demonstrated
+
+registered_model_name: flightdelay
+champion_alias: champion
+
+# Development serving model (M5). Same training window as the last E1+E2 grid
+# fit of lightgbm/12 (decision point 2024-10), so the export can be checked
+# against the grid result (D-009). Replaced by the frozen model in M8.
+# threshold_month = calibration month for the frozen alert threshold (D-038);
+# never a 2025 holdout month (D-020, enforced by run_export).
+development_model:
+  train_to: "2024-10"
+  threshold_month: "2024-11"
+  grid_reference_ap: 0.20143018347478506
+
+api:
+  max_flights_per_request: 1000

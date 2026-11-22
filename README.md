@@ -36,3 +36,19 @@ uv run mlflow ui --backend-store-uri sqlite:///mlflow.db
 ```
 
 Model configurations are fixed in `configs/models.yaml` (D-022, D-031). Holdout months (2025) are refused by the training CLI.
+
+## Serving (M5)
+
+Champion: LightGBM, 12-month window (D-037). Chosen for operational efficiency; the baseline acceptance check found no demonstrated improvement over logistic regression (D-036: `improvement_not_demonstrated`).
+
+```bash
+make export-champion   # train, register (MLflow alias "champion"), export artifacts/serving/champion
+make serve             # local API on http://127.0.0.1:8000 (docs: /docs)
+make smoke             # health, model, predict, outcome-field rejection
+
+make docker-build      # image with code and locked dependencies, no model inside
+make docker-run        # mounts artifacts/serving/champion read-only at /app/serving
+make smoke
+```
+
+Request: `POST /predict` with `{"flights": [{"flight_date": "2024-12-20", "reporting_airline": "DL", "origin": "ATL", "dest": "LAX", "crs_dep_time": 1730, "crs_arr_time": 1915, "crs_elapsed_time": 285, "distance": 1946}]}`. Only pre-departure fields are accepted; any other field is rejected with HTTP 422.

@@ -3,7 +3,7 @@
 Project: MLOps Pipeline for Flight Delay Prediction using BTS On-Time Performance Data
 Course: AIN4312 Special Topics in Artificial Intelligence Engineering (2026/27), Bahcesehir University
 Owner: Amirhassan Charvadari (individual project)
-Last updated: 2026-11-18 (revision 25: E1+E2 full grid results (3.14), O-023 E3 champion; revision 24: D-036 middle-zone interpretation approved by the owner; revision 23: D-036 baseline acceptance check and E3 implications, O-022 resolved; revision 22: D-035 grid execution, M4 mini grid, O-022; revision 21: I-23 CI failure fixed; revision 20: P-012 approved as D-034 with owner clarifications, O-020 resolved; revision 19: D-033 selection margin, P-012 alert-threshold proposal for O-020; revision 18: M3 closed on native macOS, O-013 resolved, O-021; revision 17: M3 implementation, D-031 baseline formula, D-032 model wrapper and tracking, O-018 guard implemented, I-21, I-22, O-020; revision 16: D-030 resolves O-019 and revises D-023; re-validation of 84 months; revision 15: P-005 approved as D-029, D-028 implausible durations, O-017 resolved, O-018, O-019, I-20; revision 14: D-026 model-specific categorical handling, D-027 scheduled duration source, O-017, I-18, I-19; revision 13: M2 feature contract D-025, P-005 implemented pending approval, I-16, I-17; revision 12: O-015 resolved, M0 and M1 closed; revision 11: D-024 extended with two masks and the population rule; I-14, I-15; revision 10: D-024 validation responsibilities; I-13 nullability conflict fixed; D-013 invalid labels made non-fatal)
+Last updated: 2026-11-22 (revision 27: P-013 approved as D-038, P-014 approved as D-039, O-020 fully resolved; revision 26: D-037 E3 champion, O-023 resolved, M5 serving implemented, P-013 and P-014 proposed (approved in revision 27); revision 25: E1+E2 full grid results (3.14), O-023 E3 champion; revision 24: D-036 middle-zone interpretation approved by the owner; revision 23: D-036 baseline acceptance check and E3 implications, O-022 resolved; revision 22: D-035 grid execution, M4 mini grid, O-022; revision 21: I-23 CI failure fixed; revision 20: P-012 approved as D-034 with owner clarifications, O-020 resolved; revision 19: D-033 selection margin, P-012 alert-threshold proposal for O-020; revision 18: M3 closed on native macOS, O-013 resolved, O-021; revision 17: M3 implementation, D-031 baseline formula, D-032 model wrapper and tracking, O-018 guard implemented, I-21, I-22, O-020; revision 16: D-030 resolves O-019 and revises D-023; re-validation of 84 months; revision 15: P-005 approved as D-029, D-028 implausible durations, O-017 resolved, O-018, O-019, I-20; revision 14: D-026 model-specific categorical handling, D-027 scheduled duration source, O-017, I-18, I-19; revision 13: M2 feature contract D-025, P-005 implemented pending approval, I-16, I-17; revision 12: O-015 resolved, M0 and M1 closed; revision 11: D-024 extended with two masks and the population rule; I-14, I-15; revision 10: D-024 validation responsibilities; I-13 nullability conflict fixed; D-013 invalid labels made non-fatal)
 
 Status legend: DECIDED = approved by the owner. CANDIDATE = option that must be compared experimentally before a choice is made. PROPOSED = recommended, awaiting approval. ASSUMPTION = taken as true without proof, must be stated in the report. OPEN = unresolved.
 
@@ -311,6 +311,12 @@ Implications for E3 (retraining replay, M7) and later:
 - The report must state the acceptance outcome as measured. If boosted models do not beat the references, that is a reported finding (Section on results and limitations), not a failure to hide; no claim of "XGBoost/LightGBM is best" may be made unless the outcome is "candidate_better".
 - E4 (2025 final holdout) reports the frozen champion and, for context, the frozen best reference, both trained under the same protocol; 2025 is not used for any choice (D-020).
 
+### D-037 E3 champion: lightgbm/12 — DECIDED (2026-11-21, owner; resolves O-023)
+- The E3 champion is LightGBM with a rolling 12-month training window, configuration unchanged (configs/models.yaml).
+- Rationale: operational efficiency under the D-035 cheaper-option rule (eligible within 0.005 of the best candidate and 27% faster to train than xgboost/12; lowest memory of the top options). It is NOT a claim of demonstrated predictive superiority.
+- The D-036 acceptance outcome stays explicit in all documentation and in the final report: improvement_not_demonstrated (lightgbm/12 mean AP 0.3081 vs best reference logreg/12 0.3042, difference +0.0040 < 0.005). The paired statistical analysis is separate.
+- Recorded in configs/serving.yaml (champion block) and as tags on every registered champion model version (decision, acceptance_outcome, rationale).
+
 ### D-014 Design first, then measure — DECIDED (2026-11-15)
 Hardware does not limit the architecture, the model choice, the training strategy or the experimental scope in advance. The technically and scientifically appropriate design is defined first; its real resource use is then measured and optimised. The early benchmark (section 3.3) is information, not a constraint. If a strategy cannot be run after optimisation, this is reported as a measured result with numbers.
 
@@ -404,6 +410,22 @@ Deliberately NOT used, although allowed by D-003:
 - Year: the model is always applied to a later period than it was trained on, so year values at scoring time lie outside the training range; tree models cannot extrapolate, and the feature would only describe the past.
 - IDs, city and state names, DepTimeBlk / ArrTimeBlk: redundant with features already present.
 Not yet included (candidates for later, only with evidence): holidays, historical delay rates per route (would need careful time-lagging to avoid leakage).
+
+### D-038 Alert threshold for single API requests — DECIDED (2026-11-22, formerly P-013; resolves the API part of O-020)
+Owner conditions: exact D-034 method on the prediction distribution of the month immediately after the training window; no labels of that calibration month are used; the threshold is frozen in serving.json together with the calibration month and the training window (threshold.calibration_month, threshold.train_from/train_to, threshold.tau, threshold.labels_used = false); the 2025 holdout is never used (run_export refuses holdout months).
+Problem: D-034 sets the alert threshold per batch from the batch's own scores; a single API request has no batch.
+Options: (a) return the probability only, no alert flag; (b) apply the D-034 rule once to the unlabelled scores of the first month after the training window and freeze tau in the serving bundle; (c) fixed 0.5 (would flag far fewer flights than the base rate of about 0.18-0.20; arbitrary).
+Decision: (b). Same rule as the evaluation policy, no labels used, the alert rate on that month equals the training prevalence by construction. The probability is always returned, so a consumer can apply its own threshold. In E3 the threshold is re-frozen with every promoted model on its shadow month (D-012).
+Implemented in src/flightdelay/serving.py frozen_threshold (receives scores only, so labels cannot be used).
+
+### D-039 Serving design — DECIDED (2026-11-22, formerly P-014)
+Owner emphasis: the model bundle stays mounted externally, separate from the Docker image, so model updates and rollback are independent of the image.
+- Serving bundle = MLflow pyfunc model downloaded from the registry alias "champion" + serving.json (version, window, vocabulary hash, threshold and its rule, champion decision, threshold-month metrics, AP difference against the grid). serving.json is written last and atomically; the API refuses an incomplete or inconsistent bundle and does not start without one.
+- Model registry: every export registers a new version of "flightdelay" and moves the alias "champion" (D-019). Promotion and rollback in M6 move the alias and re-export the bundle.
+- Docker: the image holds code and pinned dependencies only (uv.lock, no dev tools, non-root user, health check); the bundle is mounted read-only at /app/serving. Alternative: bake the model into the image (immutable image per model version, but a rebuild for every promotion or rollback). Mounting keeps one image for all model versions.
+- Input contract: only the 8 pre-departure source fields; unknown fields are rejected (422), so outcome fields cannot reach the model (D-003). Ranges equal the usable-row rule (row_quarantine_mask) plus a valid hhmm minute; at most 1,000 flights per request. Unseen categories are scored as missing (D-025) and reported; implausible or missing durations are reported (D-028).
+- Training-serving skew: the API converts requests to the processed-batch format with the ingest dtypes and uses the same feature code; a test checks that API scores equal batch scores for the same rows.
+- Development serving model (until the M8 freeze): lightgbm/12 trained 2023-11 to 2024-10, threshold month 2024-11, the same fit as the last grid point, so the export can be compared with the grid AP (0.2014).
 
 ## 3. Verified facts (from files on disk)
 
@@ -531,6 +553,11 @@ Reading: the three tools are given as examples ("like"). MLflow is already in th
 - Re-validated 2026-11-18 after D-030 (duration no longer a quarantine criterion): 74 pass, 10 warn, 0 fail; 1 quarantined row; usable_feature_rows 45,763,491; training_rows 44,666,171 (section 3.10).
 - Re-validated again 2026-11-18 after I-14 and I-15 (data unchanged: manifest and 84 Parquet SHA-256 hashes verified): usable_feature_rows 45,763,476; training_rows 44,666,163. Compared with scripts/compare_validation_reports.py --strict against the report before I-13 (wording change normalised) and against the report after I-13: no differences in any shared column, 65 pass / 19 warn / 0 fail in both. Warnings: airline-set changes (EV, QX, YV, 9E), 15 quarantined rows, 5 unlabeled-but-not-cancelled rows.
 - Label exclusions (D-013): 1,097,320 rows = 2.40% of all rows, reported per month in the validation report.
+
+### 3.15 M5 serving in the VM (2026-11-21, uncommitted code)
+- Tests: 189 passed (27 new in tests/test_serving.py: bundle round trip, frozen threshold rule, incomplete/tampered bundle refused, app refuses to start without a bundle, registry versions and alias, API metadata, no training-serving skew, unseen category, duration reporting, outcome fields rejected, invalid values, batch limits, accepted requests are usable rows); ruff clean.
+- Mechanics check on real data (not the champion): LightGBM trained on 2024-10 only, bundle written, threshold frozen on 2024-11 (tau 0.2233 = the D-034 batch tau of the same month, k 75,971); uvicorn started from the bundle; scripts/api_smoke.py: health, model, predict and rejection of an outcome field all passed.
+- Not yet run: run_export on native macOS (champion training, registry, bundle), docker build and container smoke test (no Docker in the VM).
 
 ### 3.14 E1+E2 full grid on native macOS (run by the owner, 2026-11-18/19)
 
@@ -667,8 +694,8 @@ Note: pandas 3 is a new major version; code must not rely on pandas 2 behaviour 
 - O-018 RESOLVED 2026-11-18 by D-032: guard implemented and tested (median fill for LightGBM when the training window has no missing durations, recorded in model metadata).
 - O-019 RESOLVED 2026-11-18 by D-030: out-of-range durations no longer quarantine the row.
 - O-021 XGBoost needs about four times more time per million rows on the 70-month expanding window than on 12-36-month windows (1,402 s vs about 185 s for 36 months), while LightGBM scales linearly. Possible causes (not measured): memory pressure or memory compression on the 8.6 GB Mac, or XGBoost's categorical split search on more rows. Matters for grid runtime, not for correctness; M4 should log per-fit time and resume after interruption.
-- O-020 RESOLVED 2026-11-18 by D-034 (batch-level evaluation threshold). API threshold policy deferred to M5.
-- O-023 E3 champion (owner decision required, D-036): the acceptance outcome of the full grid is improvement_not_demonstrated (lightgbm/12 0.3081 vs logreg/12 0.3042). Options: lightgbm/12, logreg/12, historical_rate/12. Window 12 months is the measured best for every model (C-001).
+- O-020 RESOLVED 2026-11-18 by D-034 (batch-level evaluation threshold); API threshold resolved 2026-11-22 by D-038.
+- O-023 RESOLVED 2026-11-21 by D-037 (lightgbm/12). Original: the acceptance outcome of the full grid is improvement_not_demonstrated (lightgbm/12 0.3081 vs logreg/12 0.3042). Options: lightgbm/12, logreg/12, historical_rate/12. Window 12 months is the measured best for every model (C-001).
 - O-022 RESOLVED 2026-11-18 by D-036 (owner: no tuning, configuration unchanged, explicit baseline acceptance check). Original observation (diagnostic only): at both mini-grid points the references had higher AP than both candidates (2022-02: logreg 0.288, historical_rate 0.281, xgboost 0.276, lightgbm 0.268; 2022-05: logreg 0.343, historical_rate 0.334, xgboost 0.309, lightgbm 0.303); in the M3 exit run (tested on 2022-01) the order was reversed.
 - O-013 RESOLVED 2026-11-18 (section 3.12): the expanding window (70 months, 36.6 million training rows) trains for all four models on the 8.6 GB Mac; peak memory 4.06 to 4.23 GB.
 
