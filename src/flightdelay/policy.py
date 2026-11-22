@@ -18,6 +18,10 @@ Monthly cycle for month t, called after the labels of t are revealed:
     AUC(t) < baseline - delta; scheduled: always. A trigger trains a
     candidate on the 12 months up to and including t (labels <= t only) and
     puts it in shadow on t+1. If t+1 is in the 2025 holdout, nothing is trained.
+
+E4 mode (D-045): unlock_holdout=True allows 2025 months; last_month then ends
+the run (no candidate is trained whose shadow month would be after it).
+Default is locked, so every other caller still refuses 2025.
 """
 from __future__ import annotations
 
@@ -74,20 +78,27 @@ def models_to_score(state: PolicyState, month: str) -> dict[str, ModelRef]:
     return out
 
 
-def _check_month(month: str, cfg: dict[str, Any]) -> None:
-    if is_holdout_month(month, cfg):
+def _locked(month: str, cfg: dict[str, Any], unlock_holdout: bool) -> bool:
+    return is_holdout_month(month, cfg) and not unlock_holdout
+
+
+def _check_month(month: str, cfg: dict[str, Any], unlock_holdout: bool = False) -> None:
+    if _locked(month, cfg, unlock_holdout):
         raise ValueError(f"{month} is in the locked 2025 holdout (D-020)")
 
 
 def step(state: PolicyState, obs: Observation, policy: str, mcfg: dict[str, Any],
-         window_months: int = 12, base_cfg: dict[str, Any] | None = None
+         window_months: int = 12, base_cfg: dict[str, Any] | None = None,
+         unlock_holdout: bool = False, last_month: str | None = None
          ) -> tuple[PolicyState, list[dict[str, Any]]]:
     """Apply the monthly decision for month obs.month. Returns (new state, actions)."""
     if policy not in POLICIES:
         raise ValueError(f"unknown policy {policy!r}")
     cfg = base_cfg or load_config()
     t = obs.month
-    _check_month(t, cfg)
+    _check_month(t, cfg, unlock_holdout)
+    if last_month is not None and t > last_month:
+        raise ValueError(f"{t} is after the last month of the run ({last_month})")
     s = replace(state, events=list(state.events))
     actions: list[dict[str, Any]] = []
 
@@ -144,8 +155,10 @@ def step(state: PolicyState, obs: Observation, policy: str, mcfg: dict[str, Any]
                 delta=delta)
         if fire:
             shadow = add_months(t, 1)
-            if is_holdout_month(shadow, cfg):
+            if _locked(shadow, cfg, unlock_holdout):
                 log("trigger_skipped_end_of_replay", reason="next month is in the locked holdout")
+            elif last_month is not None and shadow > last_month:
+                log("trigger_skipped_end_of_replay", reason="next month is after the run")
             else:
                 train_from, train_to = window_for(t, window_months)
                 cand = ModelRef(model_id=f"{policy}_{train_to}", train_from=train_from,
@@ -159,15 +172,16 @@ def step(state: PolicyState, obs: Observation, policy: str, mcfg: dict[str, Any]
     return s, actions
 
 
-def check_time_order(events: list[dict[str, Any]], cfg: dict[str, Any] | None = None) -> None:
-    """Raise if any event breaks the D-012 time order or touches the holdout."""
+def check_time_order(events: list[dict[str, Any]], cfg: dict[str, Any] | None = None,
+                     unlock_holdout: bool = False) -> None:
+    """Raise if any event breaks the D-012 time order or touches the (locked) holdout."""
     cfg = cfg or load_config()
     trained: dict[str, dict[str, Any]] = {}
     for e in events:
         # No decision, training window or shadow month may lie in the holdout.
         # serves_from may be 2025-01 for a change decided in 2024-12 (no 2025 data used).
         for key in ("month", "train_from", "train_to", "shadow_month"):
-            if key in e and is_holdout_month(e[key], cfg):
+            if key in e and _locked(e[key], cfg, unlock_holdout):
                 raise AssertionError(f"holdout month in event {e}")
         if e["event"] == "train_candidate":
             if e["train_to"] != e["month"]:

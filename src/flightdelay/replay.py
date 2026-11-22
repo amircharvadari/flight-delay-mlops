@@ -20,7 +20,9 @@ Caches (resume after an interruption, shared by the three policies):
 A re-run starts each policy from the beginning and takes everything it can
 from the caches, so the decisions are recomputed and must come out the same.
 identity.json pins code, configs and data; a resume with any change is refused.
-No model is trained or scored on a month of the 2025 holdout.
+No model is trained or scored on a month of the 2025 holdout, except in the
+explicit E4 mode (unlock_holdout=True, D-045), which run_replay only enables
+for the tagged freeze commit.
 """
 from __future__ import annotations
 
@@ -74,19 +76,22 @@ class Replay:
     def __init__(self, processed_dir: Path, out_dir: Path, model_type: str = "lightgbm",
                  window_months: int = 12, mon_cfg: dict | None = None,
                  model_cfg: dict | None = None, base_cfg: dict | None = None,
-                 log=print):
+                 log=print, unlock_holdout: bool = False):
         self.proc, self.out = Path(processed_dir), Path(out_dir)
         self.model_type, self.window = model_type, window_months
         self.mcfg = mon_cfg or load_monitoring_config()
         self.model_cfg = model_cfg or load_model_config()
         self.cfg = base_cfg or load_config()
         self.log = log
+        self.unlock_holdout = unlock_holdout
         self._models: OrderedDict[str, FlightDelayModel] = OrderedDict()
         self._batches: OrderedDict[str, pd.DataFrame] = OrderedDict()
         self.fits_this_run = 0
 
     # -- guards and keys -------------------------------------------------------------
     def _guard(self, *months: str) -> None:
+        if self.unlock_holdout:
+            return
         bad = [m for m in months if is_holdout_month(m, self.cfg)]
         if bad:
             raise ValueError(f"locked 2025 holdout months requested: {bad} (D-020)")
@@ -113,7 +118,8 @@ class Replay:
         prev = float(df.loc[lab, "ArrDel15"].mean()) if lab.any() else float("nan")
         last = mon.same_month_last_year(month)
         prev_last, rows_last = None, None
-        if month_path(self.proc, last).exists() and not is_holdout_month(last, self.cfg):
+        if month_path(self.proc, last).exists() and (self.unlock_holdout
+                                                      or not is_holdout_month(last, self.cfg)):
             d = pd.read_parquet(month_path(self.proc, last))
             lab_l = training_row_mask(d)
             prev_last, rows_last = float(d.loc[lab_l, "ArrDel15"].mean()), len(d)
@@ -228,7 +234,8 @@ class Replay:
                               previous_ap=roles.get("previous", {}).get("average_precision"))
             serving_ref = state.serving
             n_events = len(state.events)
-            state, actions = step(state, obs, policy, self.mcfg, self.window, self.cfg)
+            state, actions = step(state, obs, policy, self.mcfg, self.window, self.cfg,
+                                  unlock_holdout=self.unlock_holdout, last_month=months[-1])
             for a in actions:                                   # train at decision time t
                 cref = ModelRef(a["model_id"], a["train_from"], a["train_to"])
                 self.model(cref)
@@ -262,7 +269,7 @@ class Replay:
             })
             self.log(f"{policy} {m}: AP {srv['average_precision']:.4f} AUC {srv['roc_auc']:.4f} "
                      f"[{rows[-1]['events'] or '-'}]")
-        check_time_order(state.events, self.cfg)
+        check_time_order(state.events, self.cfg, unlock_holdout=self.unlock_holdout)
         trained = [e for e in state.events if e["event"] == "train_candidate"]
         fit_s = self.fit_seconds(ModelRef("", *initial)) + sum(
             self.fit_seconds(ModelRef("", e["train_from"], e["train_to"])) for e in trained)

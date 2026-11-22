@@ -77,3 +77,11 @@ caffeinate -i uv run python -m flightdelay.run_replay --out-dir data/replay/E3  
 ```
 
 Outputs in `data/replay/E3/policies/<policy>/`: `monthly.csv` (performance, frozen-threshold alerts, drift, prevalence and volume signals, events), `events.json`, `summary.json`; cross-policy comparison in `comparison.json`; one MLflow run per policy (experiment `E3_replay`).
+
+## E4 final evaluation (M8)
+
+Runs once on the 2025 holdout after the design freeze (D-045): the three policies replay 2025-01 to 2025-12 with an initial model trained on 2024. Pre-registered hypotheses are in `configs/e4.yaml`. The run is refused unless the working tree is clean and `HEAD` is the commit tagged `e4-freeze`, and a completed run is never repeated.
+
+```bash
+caffeinate -i uv run python -m flightdelay.run_replay --e4      # output: data/replay/E4
+```
