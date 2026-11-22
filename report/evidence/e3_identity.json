@@ -1,0 +1,14 @@
+{
+ "code_sha256": "624364e6eec8d9c1b3fa047a26898d68d9c99d4742b82fb00f120792743a9802",
+ "config_sha256": {
+  "base.yaml": "0b90fdaa222fba378d1715bcc70a9d2251b2d0372362f7e3deadb703a0866968",
+  "models.yaml": "b83a55faefa76ebecea798c8f80d7003c8be437e2ab87ed28345ffb50ee42bb4",
+  "monitoring.yaml": "edf3353a44532d7124d41e68a3717cadb03560bcecbe2a73c9afb40e5aeaec83",
+  "serving.yaml": "f14915c672cf4e99b8fdfac6f9e55032c4374e2794655a5c547e77aa441c8316"
+ },
+ "created": "2026-11-22T19:29:43",
+ "data_manifest_sha256": "7143ab1023fbf4e3b5493cc76d2f532269d98c0430d15cb9bb5bfa3c2a70874b",
+ "git_commit": "f7061be46356bd77643effda07c727ce4a9dfa94",
+ "git_dirty": false,
+ "plan_sha256": "b2e29c3c6a1df7d7d279924c96dd20385f6f2b9dacab00fb2a504cb0fb892226"
+}

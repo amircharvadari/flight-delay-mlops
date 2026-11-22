@@ -1,0 +1,32 @@
+[
+ {
+  "baseline_auc": 0.5858111716032566,
+  "event": "baseline_set",
+  "month": "2020-01",
+  "serving": "never_retrained_initial"
+ },
+ {
+  "baseline_auc": 0.5858111716032566,
+  "delta": 0.03,
+  "event": "degradation",
+  "month": "2020-04",
+  "serving": "never_retrained_initial",
+  "serving_auc": 0.4861379474864876
+ },
+ {
+  "baseline_auc": 0.5858111716032566,
+  "delta": 0.03,
+  "event": "degradation",
+  "month": "2021-03",
+  "serving": "never_retrained_initial",
+  "serving_auc": 0.5424326699430788
+ },
+ {
+  "baseline_auc": 0.5858111716032566,
+  "delta": 0.03,
+  "event": "degradation",
+  "month": "2024-01",
+  "serving": "never_retrained_initial",
+  "serving_auc": 0.5538464074111081
+ }
+]

@@ -1,0 +1,107 @@
+[
+ {
+  "baseline_auc": 0.5858111716032566,
+  "event": "baseline_set",
+  "month": "2020-01",
+  "serving": "triggered_initial"
+ },
+ {
+  "baseline_auc": 0.5858111716032566,
+  "delta": 0.03,
+  "event": "degradation",
+  "month": "2020-04",
+  "serving": "triggered_initial",
+  "serving_auc": 0.4861379474864876
+ },
+ {
+  "candidate": "triggered_2020-04",
+  "degraded": true,
+  "event": "train_candidate",
+  "month": "2020-04",
+  "serving": "triggered_initial",
+  "shadow_month": "2020-05",
+  "train_from": "2019-05",
+  "train_to": "2020-04"
+ },
+ {
+  "candidate": "triggered_2020-04",
+  "candidate_ap": 0.05394562468957828,
+  "event": "discard",
+  "month": "2020-05",
+  "serving": "triggered_initial",
+  "serving_ap": 0.05405942235085342
+ },
+ {
+  "baseline_auc": 0.5858111716032566,
+  "delta": 0.03,
+  "event": "degradation",
+  "month": "2021-03",
+  "serving": "triggered_initial",
+  "serving_auc": 0.5424326699430788
+ },
+ {
+  "candidate": "triggered_2021-03",
+  "degraded": true,
+  "event": "train_candidate",
+  "month": "2021-03",
+  "serving": "triggered_initial",
+  "shadow_month": "2021-04",
+  "train_from": "2020-04",
+  "train_to": "2021-03"
+ },
+ {
+  "candidate": "triggered_2021-03",
+  "candidate_ap": 0.15466276434612347,
+  "event": "promote",
+  "month": "2021-04",
+  "serves_from": "2021-05",
+  "serving": "triggered_initial",
+  "serving_ap": 0.14311520023231458,
+  "train_to": "2021-03"
+ },
+ {
+  "event": "rollback",
+  "month": "2021-05",
+  "previous_ap": 0.1893713402958202,
+  "rolled_back": "triggered_2021-03",
+  "serves_from": "2021-06",
+  "serving": "triggered_2021-03",
+  "serving_ap": 0.1822249272999951,
+  "to": "triggered_initial"
+ },
+ {
+  "baseline_auc": 0.5858111716032566,
+  "delta": 0.03,
+  "event": "degradation",
+  "month": "2024-01",
+  "serving": "triggered_initial",
+  "serving_auc": 0.5538464074111081
+ },
+ {
+  "candidate": "triggered_2024-01",
+  "degraded": true,
+  "event": "train_candidate",
+  "month": "2024-01",
+  "serving": "triggered_initial",
+  "shadow_month": "2024-02",
+  "train_from": "2023-02",
+  "train_to": "2024-01"
+ },
+ {
+  "candidate": "triggered_2024-01",
+  "candidate_ap": 0.23054347121983745,
+  "event": "promote",
+  "month": "2024-02",
+  "serves_from": "2024-03",
+  "serving": "triggered_initial",
+  "serving_ap": 0.19190318570891995,
+  "train_to": "2024-01"
+ },
+ {
+  "event": "rollback_check_passed",
+  "month": "2024-03",
+  "previous_ap": 0.29264484649043077,
+  "serving": "triggered_2024-01",
+  "serving_ap": 0.34296723637988
+ }
+]
