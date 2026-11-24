@@ -1,0 +1,163 @@
+[
+ {
+  "baseline_auc": 0.5831415318144141,
+  "event": "baseline_set",
+  "month": "2025-01",
+  "serving": "scheduled_initial"
+ },
+ {
+  "candidate": "scheduled_2025-02",
+  "degraded": false,
+  "event": "train_candidate",
+  "month": "2025-02",
+  "serving": "scheduled_initial",
+  "shadow_month": "2025-03",
+  "train_from": "2024-03",
+  "train_to": "2025-02"
+ },
+ {
+  "candidate": "scheduled_2025-02",
+  "candidate_ap": 0.29085174214254855,
+  "event": "promote",
+  "month": "2025-03",
+  "serves_from": "2025-04",
+  "serving": "scheduled_initial",
+  "serving_ap": 0.27345412769122746,
+  "train_to": "2025-02"
+ },
+ {
+  "event": "rollback_check_passed",
+  "month": "2025-04",
+  "previous_ap": 0.28158977630637605,
+  "serving": "scheduled_2025-02",
+  "serving_ap": 0.2835938702754686
+ },
+ {
+  "candidate": "scheduled_2025-04",
+  "degraded": false,
+  "event": "train_candidate",
+  "month": "2025-04",
+  "serving": "scheduled_2025-02",
+  "shadow_month": "2025-05",
+  "train_from": "2024-05",
+  "train_to": "2025-04"
+ },
+ {
+  "candidate": "scheduled_2025-04",
+  "candidate_ap": 0.36355552900162,
+  "event": "discard",
+  "month": "2025-05",
+  "serving": "scheduled_2025-02",
+  "serving_ap": 0.35915230827070727
+ },
+ {
+  "candidate": "scheduled_2025-05",
+  "degraded": false,
+  "event": "train_candidate",
+  "month": "2025-05",
+  "serving": "scheduled_2025-02",
+  "shadow_month": "2025-06",
+  "train_from": "2024-06",
+  "train_to": "2025-05"
+ },
+ {
+  "candidate": "scheduled_2025-05",
+  "candidate_ap": 0.46413701958996934,
+  "event": "discard",
+  "month": "2025-06",
+  "serving": "scheduled_2025-02",
+  "serving_ap": 0.4620541956199875
+ },
+ {
+  "candidate": "scheduled_2025-06",
+  "degraded": false,
+  "event": "train_candidate",
+  "month": "2025-06",
+  "serving": "scheduled_2025-02",
+  "shadow_month": "2025-07",
+  "train_from": "2024-07",
+  "train_to": "2025-06"
+ },
+ {
+  "candidate": "scheduled_2025-06",
+  "candidate_ap": 0.4597455329826813,
+  "event": "promote",
+  "month": "2025-07",
+  "serves_from": "2025-08",
+  "serving": "scheduled_2025-02",
+  "serving_ap": 0.4322771029332657,
+  "train_to": "2025-06"
+ },
+ {
+  "event": "rollback_check_passed",
+  "month": "2025-08",
+  "previous_ap": 0.3666719845282871,
+  "serving": "scheduled_2025-06",
+  "serving_ap": 0.3624271848793594
+ },
+ {
+  "candidate": "scheduled_2025-08",
+  "degraded": false,
+  "event": "train_candidate",
+  "month": "2025-08",
+  "serving": "scheduled_2025-06",
+  "shadow_month": "2025-09",
+  "train_from": "2024-09",
+  "train_to": "2025-08"
+ },
+ {
+  "candidate": "scheduled_2025-08",
+  "candidate_ap": 0.28589649394620004,
+  "event": "discard",
+  "month": "2025-09",
+  "serving": "scheduled_2025-06",
+  "serving_ap": 0.2825710481241574
+ },
+ {
+  "candidate": "scheduled_2025-09",
+  "degraded": false,
+  "event": "train_candidate",
+  "month": "2025-09",
+  "serving": "scheduled_2025-06",
+  "shadow_month": "2025-10",
+  "train_from": "2024-10",
+  "train_to": "2025-09"
+ },
+ {
+  "candidate": "scheduled_2025-09",
+  "candidate_ap": 0.3267048626714677,
+  "event": "promote",
+  "month": "2025-10",
+  "serves_from": "2025-11",
+  "serving": "scheduled_2025-06",
+  "serving_ap": 0.31516173669387104,
+  "train_to": "2025-09"
+ },
+ {
+  "event": "rollback_check_passed",
+  "month": "2025-11",
+  "previous_ap": 0.31134979951798997,
+  "serving": "scheduled_2025-09",
+  "serving_ap": 0.31428589628760273
+ },
+ {
+  "candidate": "scheduled_2025-11",
+  "degraded": false,
+  "event": "train_candidate",
+  "month": "2025-11",
+  "serving": "scheduled_2025-09",
+  "shadow_month": "2025-12",
+  "train_from": "2024-12",
+  "train_to": "2025-11"
+ },
+ {
+  "candidate": "scheduled_2025-11",
+  "candidate_ap": 0.3830259852475339,
+  "event": "promote",
+  "month": "2025-12",
+  "serves_from": "2026-01",
+  "serving": "scheduled_2025-09",
+  "serving_ap": 0.3775582139209406,
+  "train_to": "2025-11"
+ }
+]

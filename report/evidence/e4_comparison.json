@@ -1,0 +1,85 @@
+{
+ "comparison": {
+  "scheduled_minus_never_retrained": {
+   "mean_ap_difference": 0.002427473199314578,
+   "months_better": 7,
+   "months_equal": 3,
+   "months_worse": 2
+  },
+  "scheduled_minus_triggered": {
+   "mean_ap_difference": 0.002427473199314578,
+   "months_better": 7,
+   "months_equal": 3,
+   "months_worse": 2
+  },
+  "triggered_minus_never_retrained": {
+   "mean_ap_difference": 0.0,
+   "months_better": 0,
+   "months_equal": 12,
+   "months_worse": 0
+  }
+ },
+ "experiment": "E4",
+ "fits_this_run": 8,
+ "hypotheses": {
+  "H1": "primary: mean AP of scheduled > mean AP of never_retrained over 2025-01..2025-12",
+  "H2": "secondary: mean AP of triggered vs never_retrained over 2025-01..2025-12"
+ },
+ "summaries": {
+  "never_retrained": {
+   "first_month": "2025-01",
+   "last_month": "2025-12",
+   "mean_ap": 0.3271858554682136,
+   "mean_auc": 0.6490797149021351,
+   "mean_f1": 0.337354817573819,
+   "mean_frozen_alert_rate": 0.1448277948644337,
+   "mean_model_age_months": 6.5,
+   "median_ap": 0.3087070000503934,
+   "months": 12,
+   "n_degradation_months": 0,
+   "n_discarded": 0,
+   "n_promoted": 0,
+   "n_rollbacks": 0,
+   "n_trained": 0,
+   "policy": "never_retrained",
+   "total_fit_seconds": 50.047903041995596
+  },
+  "scheduled": {
+   "first_month": "2025-01",
+   "last_month": "2025-12",
+   "mean_ap": 0.3296133286675282,
+   "mean_auc": 0.6512629822894523,
+   "mean_f1": 0.33932983723615023,
+   "mean_frozen_alert_rate": 0.2148961984095765,
+   "mean_model_age_months": 2.8333333333333335,
+   "median_ap": 0.3147238164907369,
+   "months": 12,
+   "n_degradation_months": 0,
+   "n_discarded": 3,
+   "n_promoted": 4,
+   "n_rollbacks": 0,
+   "n_trained": 7,
+   "policy": "scheduled",
+   "total_fit_seconds": 405.6216759579693
+  },
+  "triggered": {
+   "first_month": "2025-01",
+   "last_month": "2025-12",
+   "mean_ap": 0.3271858554682136,
+   "mean_auc": 0.6490797149021351,
+   "mean_f1": 0.337354817573819,
+   "mean_frozen_alert_rate": 0.1448277948644337,
+   "mean_model_age_months": 6.5,
+   "median_ap": 0.3087070000503934,
+   "months": 12,
+   "n_degradation_months": 0,
+   "n_discarded": 0,
+   "n_promoted": 0,
+   "n_rollbacks": 0,
+   "n_trained": 0,
+   "policy": "triggered",
+   "total_fit_seconds": 50.047903041995596
+  }
+ },
+ "wall_seconds": 551.5698235829914
+}

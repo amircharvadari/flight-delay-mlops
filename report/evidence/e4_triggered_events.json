@@ -1,0 +1,8 @@
+[
+ {
+  "baseline_auc": 0.5831415318144141,
+  "event": "baseline_set",
+  "month": "2025-01",
+  "serving": "triggered_initial"
+ }
+]
