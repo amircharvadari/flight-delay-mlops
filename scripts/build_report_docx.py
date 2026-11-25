@@ -260,6 +260,220 @@ def update_fields_on_open(path: Path) -> None:
         subprocess.run(["zip", "-qXr", str(path), "."], cwd=tmp, check=True)
 
 
+# --- template mode (official AIN4312 template) ----------------------------------------
+
+TITLE_PLACEHOLDERS = {
+    "The TITLE of the project goes here": "title",
+    "The Names of the Students and their Departments go here,": "author",
+    "In Alphabetical Order by Surname,": "",
+    "Capitalize The First Letters Only": "",
+    "ISTANBUL, Date": "place",
+}
+
+
+def _set_text(par, text: str) -> None:
+    """Replace a paragraph's text but keep the formatting of its first run."""
+    runs = par.runs
+    if not runs:
+        par.add_run(text)
+        return
+    runs[0].text = text
+    for r in runs[1:]:
+        r._r.getparent().remove(r._r)
+
+
+def template_title_block(doc, template: Path, values: dict[str, str]) -> None:
+    """Copy the template's title page (logo included) in front of ABSTRACT."""
+    import io
+
+    tdoc = Document(str(template))
+    anchor = next(p for p in doc.paragraphs if p.text.strip() == "ABSTRACT")
+    block = []
+    for p in tdoc.paragraphs:
+        if p.text.strip().upper().startswith("ABSTRACT"):
+            break
+        block.append(p)
+    R = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
+    for tp in block:
+        el = copy.deepcopy(tp._p)
+        for blip in el.iter("{http://schemas.openxmlformats.org/drawingml/2006/main}blip"):
+            old = blip.get(R + "embed")
+            if old:
+                blob = tdoc.part.related_parts[old].blob
+                new_rid, _ = doc.part.get_or_add_image(io.BytesIO(blob))
+                blip.set(R + "embed", new_rid)
+        anchor._p.addprevious(el)
+    for p in list(doc.paragraphs):
+        if p._p is anchor._p:
+            break
+        key = p.text.strip()
+        if key in TITLE_PLACEHOLDERS:
+            role = TITLE_PLACEHOLDERS[key]
+            _set_text(p, values.get(role, "") if role else "")
+            if role == "place":
+                d = insert_paragraph_before(anchor, DRAFT_TEXT)
+                d.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                for r in d.runs:
+                    r.bold = True
+                    r.font.color.rgb = RGBColor(0xC0, 0x00, 0x00)
+    page_break_before(anchor)
+
+
+def seq_captions(doc) -> tuple[int, int]:
+    """'Table n. ...' / 'Figure n. ...' -> template Caption style with SEQ fields."""
+    counts = {"Table": 0, "Figure": 0}
+    for p in doc.paragraphs:
+        m = re.match(r"^(Table|Figure) (\d+)\. (.*)$", p.text.strip(), re.DOTALL)
+        if not m:
+            continue
+        kind, num, rest = m.group(1), m.group(2), m.group(3)
+        counts[kind] += 1
+        if int(num) != counts[kind]:
+            raise ValueError(f"{kind} {num} is out of order (expected {counts[kind]})")
+        for r in list(p.runs):
+            r._r.getparent().remove(r._r)
+        p.style = doc.styles["Caption"]
+        p.add_run(f"{kind} ")
+        run = p.add_run()
+        for kind_, val in (("begin", None), ("instr", f"SEQ {kind} \\* ARABIC"), ("separate", None),
+                           ("text", num), ("end", None)):
+            if kind_ == "instr":
+                el = OxmlElement("w:instrText")
+                el.set(qn("xml:space"), "preserve")
+                el.text = f" {val} "
+            elif kind_ == "text":
+                el = OxmlElement("w:t")
+                el.text = val
+            else:
+                el = OxmlElement("w:fldChar")
+                el.set(qn("w:fldCharType"), kind_)
+            run._r.append(el)
+        p.add_run(f". {rest}")
+        if kind == "Figure":
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    return counts["Table"], counts["Figure"]
+
+
+def template_lists(doc) -> None:
+    """TOC and the two lists as in the template, before LIST OF ABBREVIATIONS."""
+    target = next(p for p in doc.paragraphs if p.text.strip() == "LIST OF ABBREVIATIONS")
+    h1 = target.style
+    for title, instr in (("TABLE OF CONTENTS", 'TOC \\o "1-3" \\h \\z \\u'),
+                         ("LIST OF TABLES", 'TOC \\h \\z \\c "Table"'),
+                         ("LIST OF FIGURES", 'TOC \\h \\z \\c "Figure"')):
+        page_break_before(target)
+        h = insert_paragraph_before(target, title)
+        h.style = h1
+        add_field(insert_paragraph_before(target), instr)
+    page_break_before(target)
+    for p in doc.paragraphs:
+        if p.style.style_id == h1.style_id and re.match(
+                r"^([2-9]|1[0-3])\. |^(ACKNOWLEDGEMENTS|REFERENCES|APPENDIX)", p.text.strip()):
+            page_break_before(p)
+
+
+def _plain_style(doc, name: str, size: float | None):
+    from docx.enum.style import WD_STYLE_TYPE
+    from docx.shared import Cm
+    names = [s.name for s in doc.styles]
+    st = doc.styles[name] if name in names else doc.styles.add_style(name, WD_STYLE_TYPE.PARAGRAPH)
+    st.base_style = doc.styles["Normal"]
+    pf = st.paragraph_format
+    pf.first_line_indent = Cm(0)
+    pf.line_spacing = 1.0
+    pf.space_before = Pt(0)
+    pf.space_after = Pt(2)
+    pf.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    if size:
+        st.font.size = Pt(size)
+    return st
+
+
+def template_body_styles(doc) -> None:
+    """Body text in the template's Normal style; tables with grid borders."""
+    table_text = _plain_style(doc, "Table Text", 9)
+    _plain_style(doc, "Compact", None)
+    for t in doc.tables:
+        for row in t.rows:
+            for c in row.cells:
+                for cp in c.paragraphs:
+                    cp.style = table_text
+    normal = doc.styles["Normal"]
+    for p in doc.paragraphs:
+        if p.style.name in ("Body Text", "First Paragraph"):
+            p.style = normal
+    names = [s.name for s in doc.styles]
+    if "Table Grid" in names:
+        for t in doc.tables:
+            t.style = doc.styles["Table Grid"]
+
+
+def draft_header_only(doc) -> None:
+    """Add the DRAFT line to the header; keep the template's footer (page number)."""
+    for section in doc.sections:
+        hp = section.header.add_paragraph()
+        hp.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        r = hp.add_run(DRAFT_TEXT)
+        r.font.size = Pt(8)
+        r.font.color.rgb = RGBColor(0xC0, 0x00, 0x00)
+        footer_xml = section.footer._element.xml   # includes content controls (w:sdt)
+        if "PAGE" not in footer_xml:
+            fp = section.footer.add_paragraph()
+            fp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            add_field(fp, "PAGE")
+
+
+def english_title_language(doc) -> None:
+    """Title-page runs in English: the template's capitalised title is tagged
+    Turkish, which turns i into the dotted capital I (e.g. PIPELINE)."""
+    stop = next(p for p in doc.paragraphs if p.text.strip() == "ABSTRACT")
+    for p in doc.paragraphs:
+        if p._p is stop._p:
+            break
+        for r in p.runs:
+            rpr = r._r.get_or_add_rPr()
+            for el in rpr.findall(qn("w:lang")):
+                rpr.remove(el)
+            lang = OxmlElement("w:lang")
+            lang.set(qn("w:val"), "en-US")
+            rpr.append(lang)
+
+
+def template_sections(doc) -> None:
+    """Front matter: lower-roman page numbers, none on the title page.
+    Body from section 1: arabic numbers starting at 1 (as in the template)."""
+    body_sect = doc.sections[-1]._sectPr
+    first_chapter = next(p for p in doc.paragraphs if re.match(r"^1\. OVERVIEW", p.text.strip()))
+    start = first_chapter._p
+    while start.getprevious() is not None and start.getprevious().tag == qn("w:bookmarkStart"):
+        start = start.getprevious()
+    prev = OxmlElement("w:p")              # empty paragraph that ends the front section
+    start.addprevious(prev)
+    # the page-break paragraph before chapter 1 becomes the end of the front section
+    front = copy.deepcopy(body_sect)
+    for el in front.findall(qn("w:pgNumType")):
+        front.remove(el)
+    pg = OxmlElement("w:pgNumType")
+    pg.set(qn("w:fmt"), "lowerRoman")
+    pg.set(qn("w:start"), "1")
+    front.append(pg)
+    if front.find(qn("w:titlePg")) is None:
+        front.append(OxmlElement("w:titlePg"))
+    ppr = prev.find(qn("w:pPr"))
+    if ppr is None:
+        ppr = OxmlElement("w:pPr")
+        prev.insert(0, ppr)
+    ppr.append(front)
+    for el in body_sect.findall(qn("w:pgNumType")):
+        body_sect.remove(el)
+    pg2 = OxmlElement("w:pgNumType")
+    pg2.set(qn("w:fmt"), "decimal")
+    pg2.set(qn("w:start"), "1")
+    body_sect.append(pg2)
+    for el in body_sect.findall(qn("w:titlePg")):
+        body_sect.remove(el)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("markdown")
@@ -278,11 +492,21 @@ def main() -> None:
         cmd += ["--reference-doc", str(Path(a.template).resolve())]
     subprocess.run(cmd, cwd=work, check=True)
     doc = Document(str(work / "body.docx"))
-    nt, nf = mark_captions(doc)
-    build_front_matter(doc, title, author, place, Path(a.template) if a.template else None)
-    build_lists(doc)
-    format_tables(doc)
-    header_footer(doc)
+    if a.template:
+        nt, nf = seq_captions(doc)
+        template_body_styles(doc)
+        template_title_block(doc, Path(a.template), {"title": title, "author": author, "place": place})
+        template_lists(doc)
+        format_tables(doc)
+        draft_header_only(doc)
+        template_sections(doc)
+        english_title_language(doc)
+    else:
+        nt, nf = mark_captions(doc)
+        build_front_matter(doc, title, author, place, None)
+        build_lists(doc)
+        format_tables(doc)
+        header_footer(doc)
     out = Path(a.out).resolve()
     doc.save(str(out))
     update_fields_on_open(out)

@@ -12,6 +12,7 @@ ORDERS = {
     (W, "abstractNum"): "nsid multiLevelType tmpl name styleLink numStyleLink lvl",
     (W, "style"): "name aliases basedOn next link autoRedefine hidden uiPriority semiHidden unhideWhenUsed qFormat locked personal personalCompose personalReply rsid pPr rPr tblPr trPr tcPr tblStylePr",
     (M, "dPr"): "begChr sepChr endChr grow shp ctrlPr",
+    (W, "sectPr"): "headerReference footerReference footnotePr endnotePr type pgSz pgMar paperSrc pgBorders lnNumType pgNumType cols formProt vAlign noEndnote titlePg textDirection bidi rtlGutter docGrid printerSettings sectPrChange",
     (M, "rPr"): "lit nor scr sty brk aln",
 }
 ORDERS = {k: v.split() for k, v in ORDERS.items()}
