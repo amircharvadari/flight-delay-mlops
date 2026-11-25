@@ -1,0 +1,17 @@
+digraph G {
+  graph [rankdir=LR, fontname="DejaVu Sans", nodesep=0.35, ranksep=0.35, pad=0.2];
+  node  [shape=box, style="rounded,filled", fillcolor="#FFFFFF", color="#444444", fontname="DejaVu Sans", fontsize=9, margin="0.1,0.05"];
+  edge  [color="#444444", arrowsize=0.7, fontname="DejaVu Sans", fontsize=8];
+  M0 [label="M0\nSetup\n16 Nov"]; M1 [label="M1\nIngestion,\nvalidation\n18 Nov"]; M2 [label="M2\nFeatures\n18 Nov"];
+  M3 [label="M3\nTraining,\ntracking\n18 Nov"]; M4 [label="M4\nGrid E1/E2\n18-21 Nov"];
+  M5 [label="M5\nServing,\nDocker\n21-22 Nov"]; M6 [label="M6\nMonitoring,\npolicy\n22 Nov"];
+  M7 [label="M7\nReplay E3\n22 Nov"]; M8 [label="M8\nFreeze, E4\n22-24 Nov"]; M9 [label="M9\nReport\n24-27 Nov"];
+  node [shape=diamond, style=filled, fillcolor="#FFF6E0", fontsize=8, width=0.45, height=0.45, margin=0];
+  G1; G2; G3; G4;
+  M0 -> M1 -> M2 -> M3 -> G1 -> M4;
+  M4 -> M5; M4 -> M6;
+  M4 -> G2; M5 -> G2;
+  M6 -> G3;
+  G2 -> M7; G3 -> M7;
+  M7 -> M8 -> G4 -> M9;
+}

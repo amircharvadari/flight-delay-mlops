@@ -1,0 +1,36 @@
+digraph G {
+  graph [rankdir=TB, fontname="DejaVu Sans", fontsize=11, nodesep=0.3, ranksep=0.4, pad=0.2, newrank=true, compound=true];
+  node  [shape=box, style="rounded,filled", fillcolor="#FFFFFF", color="#444444", fontname="DejaVu Sans", fontsize=10, margin="0.12,0.06"];
+  edge  [color="#444444", arrowsize=0.7, fontname="DejaVu Sans", fontsize=8];
+
+  subgraph cluster_s1 {
+    label="Sub-system 1: Data and model training"; fontsize=11; style="rounded"; color="#7A9CC6"; bgcolor="#F3F7FC";
+    bts      [label="BTS TranStats\n84 monthly zip files\n2019-01 .. 2025-12", shape=folder, fillcolor="#EDEDED"];
+    ingest   [label="Ingestion\n13 columns, Parquet\nSHA-256 manifest"];
+    validate [label="Validation\npass / warn / fail\nquarantine + label masks"];
+    features [label="Feature builder\nallow-list, 12 features\nfixed vocabulary"];
+    train    [label="Training\n4 models, 4 window strategies\nE1/E2 grid, selection rule"];
+  }
+  mlflow [label="MLflow\ntracking + model registry\naliases: champion,\nchallenger, previous", shape=cylinder, fillcolor="#FFF6E0"];
+
+  subgraph cluster_s2 {
+    label="Sub-system 2: Deployment and monitoring"; fontsize=11; style="rounded"; color="#8DB48E"; bgcolor="#F3FAF3";
+    bundle  [label="Serving bundle\nmodel + serving.json\n(version, window,\nfrozen threshold)", shape=note];
+    api     [label="Docker container (non-root)\nFastAPI: /health /model /predict\nrejects non-pre-departure fields"];
+    replay  [label="Replay engine\nmonthly batches 2020-2024 (E3)\n2025 only after freeze (E4)"];
+    monitor [label="Monitoring\nPSI, prevalence, volume,\nperformance, concept-drift\ninference"];
+    policy  [label="Retraining policy\ntrigger, shadow, promote,\ndiscard, rollback"];
+  }
+  client [label="Client\n(HTTP requests)", shape=oval, fillcolor="#EDEDED"];
+  gh     [label="GitHub + GitHub Actions CI\ntests + container build", fillcolor="#EDEDED"];
+
+  bts -> ingest -> validate -> features -> train;
+  train -> mlflow [label="runs, versions"];
+  mlflow -> bundle [label="export / rollback"];
+  bundle -> api [label="mounted\nread-only"];
+  api -> client [dir=both];
+  features -> replay [style=dashed, label="same feature code"];
+  replay -> monitor -> policy;
+  policy -> replay [label="train candidate,\npromote / roll back", style=dashed, constraint=false];
+  gh -> api [style=dotted, arrowhead=none];
+}

@@ -1,7 +1,7 @@
 <!--
 REPORT DRAFT v1 (2026-11-24). Source of every fact: PROJECT_DECISIONS.md (D-, I-, O-, A- identifiers)
 and report/evidence/. References: report/references.md (verified 2026-11-24).
-Markers: [FIGURE n: ...] = figure still to be drawn; [AUTHOR] = information only the author can supply.
+Markers: [AUTHOR] = information only the author can supply. Figures: report/figures/*.dot (sources) and *.png.
 The author must read, understand and be able to defend every sentence before submission.
 -->
 
@@ -125,11 +125,15 @@ Table 1. Comparison of the three conceptual solutions (assessment before the exp
 
 All components run on one laptop (Apple M2, macOS, 8.6 GB RAM). The source data are 84 monthly zip files downloaded from BTS. The pipeline is a Python package (`flightdelay`) with command-line entry points; experiment tracking and the model registry use a local MLflow instance with an SQLite database; the prediction service is a FastAPI application packaged as a Docker image; the code is versioned with git on GitHub, where GitHub Actions runs the tests and a container build on every push.
 
-[FIGURE 1: Interface diagram. Boxes: BTS monthly zip files → ingestion and validation → Parquet store + manifest → feature builder → training (grid / replay) → MLflow tracking and registry (aliases champion, challenger, previous) → serving bundle → Docker container with FastAPI (/health, /model, /predict) ← client requests. Side box: GitHub repository → GitHub Actions (tests, container build).]
+![Interface diagram of the system: the two sub-systems, the MLflow tracking and registry, the serving container and continuous integration](figures/fig1_architecture.png){width=6in}
+
+Figure 1. Interface diagram of the system: the two sub-systems, the MLflow tracking and registry, the serving container and continuous integration.
 
 The monthly process of the replay is shown in Figure 2: a batch is validated and scored with labels hidden; the labels are then revealed; monitoring signals and performance are computed; and the retraining policy decides whether to train a candidate, promote it, discard it or roll back.
 
-[FIGURE 2: Process chart for one replay month t. Validate batch t → score with serving model (and candidate / previous model in shadow) → store predictions → reveal labels of t → evaluate all scoring models on the same rows → monitoring signals → policy decision: (a) trigger → train candidate on months t-11..t, shadow on t+1; (b) candidate in shadow on t → promote (serves from t+1 = decision month + 2) or discard; (c) promoted model watched on t → rollback if the previous model is better.]
+![Process chart for one replay month t: validation, scoring with labels hidden, evaluation, monitoring and the policy decision](figures/fig2_monthly_cycle.png){width=5in}
+
+Figure 2. Process chart for one replay month t: validation, scoring with labels hidden, evaluation, monitoring and the policy decision.
 
 # 2. WORK PLAN
 
@@ -139,7 +143,9 @@ Implementation was divided into ten milestones (M0 to M9), each closed by a git 
 
 ## 2.1. Work Breakdown Structure (WBS)
 
-[FIGURE 3: WBS tree. 1 Project management (decision log, issue log, schedule, AI-use record). 2 Data (2.1 acquisition, 2.2 ingestion to Parquet, 2.3 validation and quarantine, 2.4 feature contract). 3 Modelling (3.1 reference models, 3.2 candidate models, 3.3 training and tracking, 3.4 E1/E2 grid and selection). 4 Deployment (4.1 serving bundle and registry, 4.2 FastAPI service, 4.3 Docker image, 4.4 CI/CD). 5 Monitoring and retraining (5.1 signals, 5.2 policy, 5.3 registry operations, 5.4 replay engine). 6 Evaluation (6.1 E3 replay, 6.2 design freeze, 6.3 E4 holdout). 7 Report.]
+![Work breakdown structure of the project](figures/fig3_wbs.png){width=6.3in}
+
+Figure 3. Work breakdown structure of the project.
 
 Table 2 maps the WBS to the milestones and their completion commits.
 
@@ -164,7 +170,9 @@ Not applicable: the project is individual. The author is responsible for every w
 
 ## 2.3. Project Network (PN)
 
-[FIGURE 4: Project network. M0 → M1 → M2 → M3 → M4 → {M5, M6} → M7 (needs M5 registry export logic and M6 policy) → M8 → M9. Gates: G1 after M3, G2 after M4/M5, G3 after M6, G4 after M7/M8.]
+![Project network: milestones M0 to M9 with completion dates and gates G1 to G4](figures/fig4_network.png){width=6.5in}
+
+Figure 4. Project network: milestones M0 to M9 with completion dates and gates G1 to G4.
 
 The milestones form a chain because each depends on the previous one: features need validated data, training needs features, the grid needs training, the replay needs both the selected model (M4) and the policy (M6), and the final evaluation needs a frozen design. The only parallel branch is M5 (serving) and M6 (monitoring), which both depend on M4. The critical path therefore runs through every milestone except M5. The longest machine-time task, the E1/E2 grid, was run overnight so that it did not block work on the following milestones.
 

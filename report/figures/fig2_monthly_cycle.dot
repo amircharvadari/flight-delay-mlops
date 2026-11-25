@@ -1,0 +1,16 @@
+digraph G {
+  graph [rankdir=TB, fontname="DejaVu Sans", fontsize=11, nodesep=0.3, ranksep=0.28, pad=0.2];
+  node  [shape=box, style="rounded,filled", fillcolor="#FFFFFF", color="#444444", fontname="DejaVu Sans", fontsize=10, margin="0.12,0.05", width=5.2];
+  edge  [color="#444444", arrowsize=0.7];
+  v  [label="1. Validate batch t (schema, ranges, quarantine)"];
+  s  [label="2. Score batch t with labels hidden: serving model officially;\ncandidate (shadow month t) and previous model (watched in t) in shadow mode"];
+  st [label="3. Store predictions"];
+  l  [label="4. Reveal labels of t"];
+  e  [label="5. Evaluate every scoring model on the same labelled rows\n(AP, AUC, precision / recall / F1)"];
+  m  [label="6. Monitoring signals: PSI vs. same calendar month in the training window,\nprevalence vs. t-12, volume, unscorable rows, inferred concept drift"];
+  rb [label="7a. Rollback check (previous model watched in t):\nAP(previous) >= AP(new) + 0.005  ->  previous serves from t+1", fillcolor="#FFF6E0"];
+  pr [label="7b. Promotion check (candidate in shadow in t):\nAP(candidate) >= AP(serving) + 0.005  ->  serves from t+1 (= decision month + 2);\notherwise discard", fillcolor="#FFF6E0"];
+  tr [label="7c. Trigger (only if no change decided and no candidate in shadow):\nB: AUC(t) < baseline - 0.03     C: always     A: never\n->  train candidate on months t-11 .. t, shadow mode on t+1", fillcolor="#FFF6E0"];
+  nx [label="Next month t+1", shape=oval, fillcolor="#EDEDED", width=2];
+  v -> s -> st -> l -> e -> m -> rb -> pr -> tr -> nx;
+}
