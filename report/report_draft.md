@@ -9,7 +9,7 @@ The author must read, understand and be able to defend every sentence before sub
 
 Amirhassan Charvadari, Artificial Intelligence Engineering
 
-ISTANBUL, [AUTHOR: submission date]
+ISTANBUL, 27 November 2026
 
 # ABSTRACT
 
@@ -143,6 +143,8 @@ Implementation was divided into ten milestones (M0 to M9), each closed by a git 
 
 ## 2.1. Work Breakdown Structure (WBS)
 
+Figure 3 shows the work breakdown structure: seven work areas, from project management to the report, each divided into work packages.
+
 ![Work breakdown structure of the project](figures/fig3_wbs.png){width=6.3in}
 
 Figure 3. Work breakdown structure of the project.
@@ -170,7 +172,9 @@ Not applicable: the project is individual. The author is responsible for every w
 
 ## 2.3. Project Network (PN)
 
-![Project network: milestones M0 to M9 with completion dates and gates G1 to G4](figures/fig4_network.png){width=6.5in}
+Figure 4 shows the dependencies between the milestones and the review gates.
+
+![Project network: milestones M0 to M9 with completion dates and gates G1 to G4](figures/fig4_network.png){width=6in}
 
 Figure 4. Project network: milestones M0 to M9 with completion dates and gates G1 to G4.
 
@@ -178,12 +182,12 @@ The milestones form a chain because each depends on the previous one: features n
 
 ## 2.4. Gantt chart
 
-Table 3 shows the plan and the actual dates. The original plan placed the replay and the final evaluation on 23 November; both were completed on 22 November, and the E4 results were committed on 24 November after review.
+Table 3 gives the detailed schedule, work package by date range, including the overnight grid run and the day the E4 results were recorded; Figure 5 presents the same schedule as a Gantt chart, which makes the overlaps between work packages and the remaining report work visible at a glance. Both are based on the completion dates in Table 2. The original plan placed the replay and the final evaluation on 23 November; both were completed on 22 November, and the E4 results were committed on 24 November after review.
 
-Table 3. Gantt chart (planned vs. actual), November 2026.
+Table 3. Schedule by work package, November 2026 (actual up to 24 November; 25-27 November planned).
 
 | Work package | 12-15 | 16 | 17-18 | 19-20 | 21 | 22 | 23-24 | 25-27 |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| -------------------------- | -------- | ---- | ---- | -------- | -------- | ---- | -------- | ---- |
 | Phases 1-5: topic, requirements, data, architecture, roadmap | ■ | | | | | | | |
 | M0 setup | | ■ | | | | | | |
 | M1-M3 data, features, training | | | ■ | | | | | |
@@ -194,9 +198,11 @@ Table 3. Gantt chart (planned vs. actual), November 2026.
 | M8 freeze, E4 | | | | | | ■ | ■ (results) | |
 | M9 report | (draft 1.1-1.2) | | | | | | ■ | ■ |
 
-[AUTHOR: replace with a drawn Gantt chart if required by the course.]
+![Gantt chart of the project, November 2026](figures/fig5_gantt.png){width=6.3in}
 
-## 2.6. Risk assessment
+Figure 5. Gantt chart of the project, November 2026, drawn from the dates in Tables 2 and 3; the hatched bar is the remaining, planned part of the report work.
+
+## 2.5. Risk assessment
 
 Risks were identified at the planning stage and reviewed at every gate. Table 4 lists them with the response that was planned and what actually happened.
 
@@ -278,6 +284,8 @@ The data is the Reporting Carrier On-Time Performance table (1987 to present) of
 The 84 monthly zip files from January 2019 to December 2025 were downloaded manually by the author from the TranStats download page in November 2026, because the site could not be reached from the AI assistant's environment (I-03). Each file is recorded in a manifest (`data/manifest.csv`) with its SHA-256 hash, size, row count and processing time; the hashes were re-verified before every major experiment. The data is public, not team-collected, synthetic or proprietary.
 
 ## 4.2. Dataset description
+
+Table 5 summarises the dataset.
 
 Table 5. Dataset summary.
 
@@ -468,6 +476,8 @@ All models implement one wrapper (`FlightDelayModel`) with `fit`, `predict_proba
 
 ## 6.6. Training configuration
 
+Table 8 lists the training configuration.
+
 Table 8. Training configuration (`configs/models.yaml`, committed before any experiment).
 
 | Parameter | LightGBM | XGBoost | Logistic regression | Historical rate |
@@ -492,9 +502,9 @@ The API (FastAPI) exposes three endpoints: `GET /health` (liveness and model ver
 ```
 mlops-capstone/
 ├── configs/            base, models, grid, serving, monitoring, e4 (YAML)
-├── src/flightdelay/    23 modules: ingest, validate, features, models, training, tracking,
-│                       evaluation, grid, selection, serving, api, registry, monitoring,
-│                       policy, replay, and run_* entry points
+├── src/flightdelay/    23 modules: ingest, validate, features, models, training,
+│                       tracking, evaluation, grid, selection, serving, api,
+│                       registry, monitoring, policy, replay, and run_* entry points
 ├── tests/              16 test files (247 tests)
 ├── scripts/            checks and smoke tests
 ├── report/             report draft, references, evidence (results, logs, identities)
@@ -590,6 +600,8 @@ In E1/E2 the controls are the historical-rate and logistic-regression references
 Scenarios are given by the data rather than constructed: normal seasonal variation (2019, 2022 to 2024), an extreme shock (2020: cancellations up to 41.5%, prevalence down to under 5%), recovery (2021), changes in the set of airlines (2020, 2021, 2023, 2025) and an unseen year (2025). Window strategies (12 months to 70 months of history) test how much history helps under these changes.
 
 ## 8.5. Evaluation metrics
+
+Table 10 defines the evaluation metrics.
 
 Table 10. Evaluation metrics.
 
@@ -731,6 +743,8 @@ Not tested: multiple random seeds, noise injection and reduced training data.
 
 ## 10.3. Acceptance criteria
 
+Table 16 lists each requirement of Section 1.2 with its acceptance criterion and status.
+
 Table 16. Requirements and their status.
 
 | Requirement | Criterion | Status |
@@ -768,12 +782,21 @@ The two sub-systems meet at three interfaces, each covered by a test. The featur
 
 **The trigger was the weakest design element.** It fired 3 times in 60 months and never in 2025, although model A's AUC was below its baseline in 12 of the 60 replay months. The cause is visible in the data: the baseline was taken from a single month, January, which has the lowest AUC of the year (mean 0.574 for model A, against 0.663 in July). The AUC trigger removed the effect of prevalence, as intended, but not the seasonal pattern of AUC itself. The same single-month calibration also affected the frozen alert threshold: calibrated on January 2025, it flagged 14.5% of flights instead of about 20%. Both are recorded as limitations (O-024, D-038) and were not corrected, because changing them after seeing the evaluation data would have tuned the design on that data.
 
+## 11.3. Limitations and threats to validity
+
+The limitations stated in the preceding sections are collected here so that they can be judged together.
+
+- **Construct validity.** The features are limited to the published schedule, so the task measures what is predictable from route, time and season only. Leakage safety rests on the assumption that the scheduled fields are fixed before departure (A-001). Average precision depends strongly on the monthly delay rate (Section 9.5), so differences between months are not differences in model quality.
+- **Internal validity.** The selection years 2022 to 2024 are also part of the E3 replay, so E3 is not independent of the selection (D-020); only E4 is. The simulation assumes that the labels of a month are available before the next month is processed (A-002), which is shorter than the real publication delay. The trigger baseline and the frozen alert threshold are each calibrated on a single month (O-024, D-038).
+- **Statistical conclusion validity.** Every configuration was run once with seed 42, so seed variability is not quantified; no significance test was made because consecutive months are not independent (Section 9.5). The hyperparameters were fixed in advance and not tuned.
+- **External validity.** The results come from one data source and one prediction task: scheduled domestic flights in the BTS data. Reproducibility was measured on one machine only (O-008), prediction latency was not measured, and noise injection and reduced training data were not tested (Sections 9.6, 10.2).
+
 # 12. REPRODUCIBILITY AND RESEARCH INTEGRITY
 
 ## 12.1. Reproducibility package
 
 - Data: BTS Reporting Carrier On-Time Performance [6], 2019-01 to 2025-12, downloaded in November 2026; `data/manifest.csv` lists the SHA-256 hash of every file (data not redistributed in the repository).
-- Code: GitHub repository [AUTHOR: repository URL and visibility], commit 3ddd805 (design freeze, tag `e4-freeze`) and later commits for the results.
+- Code: GitHub repository https://github.com/amircharvadari/flight-delay-mlops (public), commit 3ddd805 (design freeze, tag `e4-freeze`) and later commits for the results.
 - Environment: `pyproject.toml`, `uv.lock`, `.python-version`, `Dockerfile`.
 - Configuration and hyperparameters: `configs/` (base, models, grid, serving, monitoring, e4).
 - Seed: 42.
@@ -791,6 +814,8 @@ Generative AI was used extensively, and this is disclosed in full. Claude (Anthr
 The author made every design decision recorded as "decided" in the decision log, approved every commit, ran all reported experiments on his own laptop, and reported several defects that were then fixed (for example I-13 and I-24). Before submission the author must have read and understood every section and be able to explain and defend it. No result, number or citation in this report was invented: every number comes from an evidence file, and every reference was checked against its publisher or index record (Section 1.3.1).
 
 ## 12.4. Data and experiment traceability
+
+Table 17 links each main result to its evidence files and to the commit that produced it.
 
 Table 17. Traceability of the main results.
 
@@ -812,10 +837,6 @@ The measured results are modest and are reported as they came out. LightGBM was 
 In conclusion, the main value of the work lies in the reliability of the process rather than in predictive accuracy: every result is traceable, reproducible and protected against leakage and look-ahead, and the pre-registered evaluation made it possible to see that a plausible retraining policy did not add value in this setting. With schedule-only features the predictable signal is limited (mean AP about 0.31 at a delay rate of about 0.21), so the most important limitation is the feature set, followed by the assumption that the scheduled times are known before departure (A-001), the one-month label delay in the simulation (A-002), untuned hyperparameters, single-seed runs and the overlap of selection and replay years.
 
 Future work follows directly from the findings: a seasonal baseline for the trigger (the AUC of the same calendar month a year earlier) or a comparison with a fresh candidate instead of a fixed baseline; multi-month calibration of the alert threshold; features that are available shortly before departure, such as weather forecasts or the delay state of the airport network, which the literature uses [2], [7]; a realistic two-month label delay; a paired statistical analysis of the saved predictions; and, optionally, an orchestrator such as Airflow around the existing pipeline steps.
-
-# ACKNOWLEDGEMENTS
-
-[AUTHOR: e.g., thank the course instructor for guidance and the clarification on optional tools.]
 
 # REFERENCES
 
@@ -855,8 +876,78 @@ Future work follows directly from the findings: a seasonal baseline for the trig
 
 # APPENDIX A
 
-Source code: [AUTHOR: repository URL]. Main entry points: `run_ingest`, `run_train`, `run_grid`, `run_export`, `registry`, `run_replay`; see `README.md`.
+Source code: https://github.com/amircharvadari/flight-delay-mlops. Main entry points: `run_ingest`, `run_train`, `run_grid`, `run_export`, `registry`, `run_replay`; see `README.md`.
 
 # APPENDIX B
 
 Decision log: `PROJECT_DECISIONS.md` (decisions D-001 to D-045, assumptions A-001 to A-004, open questions, issue log I-01 to I-24).
+
+Table 18 lists every decision-log entry cited in this report with its title (decisions), statement (assumptions and open questions) or issue summary, as recorded in revision 35 of the log (commit 421e603). Long entries are abridged.
+
+Table 18. Decision-log entries cited in this report (PROJECT_DECISIONS.md, revision 35).
+
+| ID | Title or statement (abridged) | Status in revision 35 |
+| ----- | ---------------------------------------- | -------- |
+| A-001 | CRS schedule fields (CRSDepTime, CRSArrTime, CRSElapsedTime) equal the schedule known before departure (BTS … | assumption |
+| A-002 | In the simulation, the labels of month t become available before the batch of month t+1 is processed. In … | assumption |
+| A-004 | deadline is 2026-11-27 (D-021). | superseded |
+| D-001 | Project topic | decided |
+| D-003 | Prediction time and leakage rule | decided |
+| D-007 | Chronological evaluation of candidate models | decided |
+| D-008 | Monitoring separates four kinds of change | decided |
+| D-009 | Reproducibility is defined with a tolerance | decided |
+| D-012 | Retraining policy and chronological promotion sequence | decided |
+| D-013 | Records without a valid label | decided |
+| D-015 | Monitoring is implemented in the project's own Python modules | decided |
+| D-020 | Experiment protocol | decided |
+| D-022 | Experiment execution details | decided |
+| D-023 | Row-level quarantine in validation | decided |
+| D-024 | Validation layer responsibilities and the training-row gate | decided |
+| D-025 | Feature contract | decided |
+| D-026 | Model-specific handling of the categorical features | decided |
+| D-027 | Source of the scheduled-duration feature | decided |
+| D-028 | Implausible scheduled durations become missing, the row is kept | decided |
+| D-029 | Final feature list | decided |
+| D-030 | A duration-only problem never quarantines a row | decided |
+| D-031 | Historical-rate baseline: exact formula and fixed prior strengths | decided |
+| D-033 | Selection margin | decided |
+| D-034 | Alert threshold for precision, recall and F1 | decided |
+| D-035 | E1+E2 grid execution and the cheaper-option rule | decided |
+| D-036 | Baseline acceptance check and its implications for E3 | decided |
+| D-037 | E3 champion: lightgbm/12 | decided |
+| D-038 | Alert threshold for single API requests | decided |
+| D-039 | Serving design | decided |
+| D-040 | Retraining trigger | decided |
+| D-041 | Promotion rule | decided |
+| D-042 | Rollback | decided |
+| D-043 | Monitoring signals and reference windows | decided |
+| D-044 | Policies compared in E3 | decided |
+| D-045 | E4 final evaluation: design freeze and pre-registration | decided |
+| I-01 | Original YOK dataset insufficient for forecasting goals | issue |
+| I-02 | Candidate fraud dataset violated time criteria | issue |
+| I-03 | BTS site not reachable from the assistant's sandbox | issue |
+| I-04 | Most columns are only known after the flight | issue |
+| I-05 | One month with all columns uses about 1.1 GB RAM | issue |
+| I-06 | First draft of the promotion rule did not state that the candidate must be validated on data outside its … | issue |
+| I-07 | Monthly delay rate varies from 14% to 25% inside 2019 | issue |
+| I-08 | First promotion proposal validated the candidate on the trigger month | issue |
+| I-09 | An orchestrator was rejected before the course brief was read; the brief names Airflow and Kubernetes as … | issue |
+| I-10 | Ruff reported 5 errors, all in the benchmark scripts under report/evidence | issue |
+| I-11 | One flight with negative scheduled duration (2020-01), one with no flight number (2024-08), five rows per 84 … | issue |
+| I-12 | Device connection dropped mid-run; one patch was lost and had to be re-applied | issue |
+| I-13 | A null in Origin, Dest, CRSDepTime, CRSArrTime, Distance or FlightDate failed the whole batch instead of … | issue |
+| I-14 | A single training_row_mask() was used for every purpose, although scoring and feature-drift monitoring do not … | issue |
+| I-15 | After renaming a report field, the old column survived in validation_report.csv as NaN, because merging old … | issue |
+| I-16 | The main leakage test changed outcome columns but not the target itself; a mutant feature built from ArrDel15 … | issue |
+| I-17 | pandas 3 deprecates building a Categorical from values outside its category list (will raise in a future … | issue |
+| I-18 | XGBoost behaviour for category columns depends on the library version: older versions raised an error without … | issue |
+| I-19 | Loading 72 months at once with 64-bit intermediate columns was killed by the operating system (out of memory, … | issue |
+| I-20 | LightGBM treats a missing value at prediction time like 0 when the feature had no missing values in its … | issue |
+| I-21 | MLflow could not use SQLite in the project folder from the assistant's VM ("disk I/O error"): SQLite cannot … | issue |
+| I-22 | The git dirty flag ignored untracked files, so runs made with new, uncommitted M3 modules were recorded as clean | issue |
+| I-23 | GitHub Actions run for commit 4fde377: 128 passed, 1 failed (tests/test_models.py::test_mlflow_round_trip, … | issue |
+| I-24 | Container did not start: PermissionError on /app/src/flightdelay/api.py (reported by the owner after make … | issue |
+| O-008 | Numerical tolerance for reproducibility (D-009). | open |
+| O-012 | Airflow and Kubernetes are optional and count as a positive point, not a requirement. Priority is finishing … | resolved |
+| O-018 | guard implemented and tested (median fill for LightGBM when the training window has no missing durations, … | resolved |
+| O-024 | E3 shows that the D-040 trigger is insensitive when the baseline AUC comes from a seasonally hard month … | open |

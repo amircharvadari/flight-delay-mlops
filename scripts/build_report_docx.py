@@ -262,6 +262,8 @@ def update_fields_on_open(path: Path) -> None:
 
 # --- template mode (official AIN4312 template) ----------------------------------------
 
+CODE_FONT = "Courier New"
+
 TITLE_PLACEHOLDERS = {
     "The TITLE of the project goes here": "title",
     "The Names of the Students and their Departments go here,": "author",
@@ -389,10 +391,22 @@ def _plain_style(doc, name: str, size: float | None):
     return st
 
 
+def _code_styles(doc) -> None:
+    """Monospace, single-spaced, left-aligned code (the template defines no code styles)."""
+    from docx.enum.style import WD_STYLE_TYPE
+    code = _plain_style(doc, "Source Code", 9)
+    code.font.name = CODE_FONT
+    names = [s.name for s in doc.styles]
+    if "Verbatim Char" not in names:
+        doc.styles.add_style("Verbatim Char", WD_STYLE_TYPE.CHARACTER)
+    doc.styles["Verbatim Char"].font.name = CODE_FONT
+
+
 def template_body_styles(doc) -> None:
     """Body text in the template's Normal style; tables with grid borders."""
     table_text = _plain_style(doc, "Table Text", 9)
     _plain_style(doc, "Compact", None)
+    _code_styles(doc)
     for t in doc.tables:
         for row in t.rows:
             for c in row.cells:
